@@ -279,13 +279,17 @@ class SceneDetector:
             logger.warning("Falling back to duration-based video splitting")
             return self.split_video_by_duration(video_path, output_dir)
     
-    def split_video_by_duration(self, video_path: str, output_dir: str) -> List[str]:
+    def split_video_by_duration(self, video_path: str, output_dir: str, 
+                               chunk_duration: float = 5.0, 
+                               min_chunk_duration: float = 0.5) -> List[str]:
         """
         Split a video into chunks of equal duration.
         
         Args:
             video_path: Path to the video
             output_dir: Directory to save the chunks
+            chunk_duration: Duration of each chunk in seconds
+            min_chunk_duration: Minimum duration of a chunk to keep
             
         Returns:
             List of paths to the created chunks
@@ -394,3 +398,111 @@ class SceneDetector:
             logger.error(f"Error generating time-based scenes: {str(e)}")
             # Return a simple split if all else fails
             return [0.0, video_info.get('duration', 60.0)]
+    
+    def split_video_with_output_pairs(self, video_path: str, hr_dir: str, lr_dir: str, 
+                                     chunk_strategy: str = "scene_detection",
+                                     chunk_duration: float = 5.0,
+                                     min_chunk_duration: float = 3.0) -> List[Tuple[str, str]]:
+        """
+        Split a video and create HR/LR output pairs.
+        
+        Args:
+            video_path: Path to the video
+            hr_dir: Directory for high-resolution chunks
+            lr_dir: Directory for low-resolution chunks
+            chunk_strategy: Strategy for splitting ("scene_detection" or "duration")
+            chunk_duration: Duration of each chunk if using duration strategy
+            min_chunk_duration: Minimum duration of a chunk to keep
+            
+        Returns:
+            List of tuples (hr_chunk_path, lr_chunk_path)
+        """
+        # Create output directories
+        os.makedirs(hr_dir, exist_ok=True)
+        os.makedirs(lr_dir, exist_ok=True)
+        
+        # Clean directories
+        for directory in [hr_dir, lr_dir]:
+            for file in os.listdir(directory):
+                file_path = os.path.join(directory, file)
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+        
+        chunk_pairs = []
+        
+        if chunk_strategy == "scene_detection":
+            # Detect scenes
+            scene_times = self.detect_scenes(video_path)
+            
+            # Create chunks based on scene times
+            for i in range(len(scene_times) - 1):
+                start_time = scene_times[i]
+                end_time = scene_times[i + 1]
+                duration = end_time - start_time
+                
+                # Skip if chunk is too short
+                if duration < min_chunk_duration:
+                    logger.info(f"Skipping scene {i+1} (duration {duration:.2f}s is less than minimum {min_chunk_duration}s)")
+                    continue
+                
+                hr_chunk_path = os.path.join(hr_dir, f"chunk_{i:04d}.mp4")
+                lr_chunk_path = os.path.join(lr_dir, f"chunk_{i:04d}.mp4")
+                
+                try:
+                    logger.info(f"Creating scene chunk {i+1}/{len(scene_times)-1}: start={start_time:.2f}s, duration={duration:.2f}s")
+                    
+                    # Extract chunk using ffmpeg with precise seeking
+                    (
+                        ffmpeg
+                        .input(video_path, ss=start_time)
+                        .output(hr_chunk_path, t=duration, c='copy', avoid_negative_ts='make_zero')
+                        .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
+                    )
+                    
+                    chunk_pairs.append((hr_chunk_path, lr_chunk_path))
+                    logger.info(f"Created HR scene chunk {i+1}/{len(scene_times)-1}: {hr_chunk_path} (duration: {duration:.2f}s)")
+                except ffmpeg.Error as e:
+                    logger.error(f"Error creating scene chunk {i+1}: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+        
+        elif chunk_strategy == "duration":
+            # Get video info
+            video_info = self.get_video_info(video_path)
+            total_duration = video_info['duration']
+            
+            # Calculate number of chunks
+            num_chunks = int(total_duration / chunk_duration) + (1 if total_duration % chunk_duration > 0 else 0)
+            logger.info(f"Splitting video into {num_chunks} chunks of {chunk_duration} seconds each")
+            
+            # Split video into chunks
+            for i in range(num_chunks):
+                start_time = i * chunk_duration
+                hr_chunk_path = os.path.join(hr_dir, f"chunk_{i:04d}.mp4")
+                lr_chunk_path = os.path.join(lr_dir, f"chunk_{i:04d}.mp4")
+                
+                # Calculate duration for this chunk
+                duration = min(chunk_duration, total_duration - start_time)
+                
+                # Skip if duration is too small
+                if duration < min_chunk_duration:
+                    continue
+                
+                try:
+                    logger.info(f"Creating chunk {i+1}/{num_chunks}: start={start_time}s, duration={duration:.2f}s")
+                    
+                    # Extract chunk using ffmpeg with precise seeking
+                    (
+                        ffmpeg
+                        .input(video_path, ss=start_time)
+                        .output(hr_chunk_path, t=duration, c='copy', avoid_negative_ts='make_zero')
+                        .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
+                    )
+                    
+                    chunk_pairs.append((hr_chunk_path, lr_chunk_path))
+                    logger.info(f"Created HR chunk {i+1}/{num_chunks}: {hr_chunk_path} (duration: {duration:.2f}s)")
+                except ffmpeg.Error as e:
+                    logger.error(f"Error creating chunk {i+1}: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+        
+        else:
+            raise ValueError(f"Unknown chunk strategy: {chunk_strategy}")
+        
+        return chunk_pairs
