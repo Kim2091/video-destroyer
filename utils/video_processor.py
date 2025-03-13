@@ -17,20 +17,21 @@ class VideoProcessor:
     Handles video processing operations using FFmpeg.
     """
     
-    def __init__(self, config: Dict[str, Any], codec_handler):
+    def __init__(self, config: Dict[str, Any], codec_handler, scene_detector=None):
         """
         Initialize the video processor.
         
         Args:
             config: Configuration dictionary
             codec_handler: CodecHandler instance for codec selection
+            scene_detector: SceneDetector instance for scene detection
         """
         self.input_path = config['input_video']
         self.output_directory = config['output_directory']
         self.chunks_directory = os.path.join(config.get('chunks_directory', 'chunks'))
         self.hr_directory = os.path.join(self.chunks_directory, 'HR')
         self.lr_directory = os.path.join(self.chunks_directory, 'LR')
-        self.chunk_strategy = config.get('chunk_strategy', 'scene_detection')  # Default to scene detection
+        self.chunk_strategy = config.get('chunk_strategy', 'scene_detection')
         self.chunk_duration = config.get('chunk_duration', 5)
         self.min_chunk_duration = config.get('min_chunk_duration', 3)
         
@@ -38,10 +39,10 @@ class VideoProcessor:
         self.scene_detection = config.get('scene_detection', {})
         self.scene_threshold = self.scene_detection.get('threshold', 0.3)
         self.scene_min_scene_length = self.scene_detection.get('min_scene_length', 2.0)
-        self.scene_method = self.scene_detection.get('method', 'content')  # 'content' or 'edges'
+        self.scene_method = self.scene_detection.get('method', 'content')
         
         # Initialize scene detector
-        self.scene_detector = SceneDetector(
+        self.scene_detector = scene_detector or SceneDetector(
             threshold=self.scene_threshold,
             min_scene_length=self.scene_min_scene_length,
             method=self.scene_method
@@ -61,108 +62,6 @@ class VideoProcessor:
         # Get video info for later use
         self.video_info = self.scene_detector.get_video_info(self.input_path)
     
-    def split_video_by_duration(self) -> List[Tuple[str, str]]:
-        """
-        Split the input video into chunks of specified duration, ensuring clean cuts.
-        
-        Returns:
-            List of tuples (hr_chunk_path, lr_chunk_path)
-        """
-        total_duration = self.video_info['duration']
-        chunk_pairs = []
-        
-        # Clean HR and LR directories
-        for directory in [self.hr_directory, self.lr_directory]:
-            for file in os.listdir(directory):
-                file_path = os.path.join(directory, file)
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
-        
-        # Calculate number of chunks
-        num_chunks = int(total_duration / self.chunk_duration) + (1 if total_duration % self.chunk_duration > 0 else 0)
-        logger.info(f"Splitting video into {num_chunks} chunks of {self.chunk_duration} seconds each")
-        
-        # Split video into chunks
-        for i in range(num_chunks):
-            start_time = i * self.chunk_duration
-            hr_chunk_path = os.path.join(self.hr_directory, f"chunk_{i:04d}.mp4")
-            lr_chunk_path = os.path.join(self.lr_directory, f"chunk_{i:04d}.mp4")
-            
-            # Calculate duration for this chunk
-            duration = min(self.chunk_duration, total_duration - start_time)
-            
-            # Skip if duration is too small
-            if duration < 0.5:  # Skip chunks less than half a second
-                continue
-            
-            try:
-                logger.info(f"Creating chunk {i+1}/{num_chunks}: start={start_time}s, duration={duration:.2f}s")
-                
-                # Extract chunk using ffmpeg with precise seeking and segment options
-                (
-                    ffmpeg
-                    .input(self.input_path, ss=start_time)
-                    .output(hr_chunk_path, t=duration, c='copy', avoid_negative_ts='make_zero')
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-                )
-                
-                chunk_pairs.append((hr_chunk_path, lr_chunk_path))
-                logger.info(f"Created HR chunk {i+1}/{num_chunks}: {hr_chunk_path} (duration: {duration:.2f}s)")
-            except ffmpeg.Error as e:
-                logger.error(f"Error creating chunk {i+1}: {e.stderr.decode() if e.stderr else 'Unknown error'}")
-        
-        return chunk_pairs
-    
-    def split_video_by_scene(self) -> List[Tuple[str, str]]:
-        """
-        Split the input video by scene detection.
-        
-        Returns:
-            List of tuples (hr_chunk_path, lr_chunk_path)
-        """
-        # Clean HR and LR directories
-        for directory in [self.hr_directory, self.lr_directory]:
-            for file in os.listdir(directory):
-                file_path = os.path.join(directory, file)
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
-        
-        # Detect scenes using the scene detector
-        scene_times = self.scene_detector.detect_scenes(self.input_path)
-        
-        # Create chunks based on scene times
-        chunk_pairs = []
-        for i in range(len(scene_times) - 1):
-            start_time = scene_times[i]
-            end_time = scene_times[i + 1]
-            duration = end_time - start_time
-            
-            # Skip if chunk is too short
-            if duration < self.min_chunk_duration:
-                logger.info(f"Skipping scene {i+1} (duration {duration:.2f}s is less than minimum {self.min_chunk_duration}s)")
-                continue
-            
-            hr_chunk_path = os.path.join(self.hr_directory, f"chunk_{i:04d}.mp4")
-            lr_chunk_path = os.path.join(self.lr_directory, f"chunk_{i:04d}.mp4")
-            
-            try:
-                logger.info(f"Creating scene chunk {i+1}/{len(scene_times)-1}: start={start_time:.2f}s, duration={duration:.2f}s")
-                
-                # Extract chunk using ffmpeg with precise seeking
-                (
-                    ffmpeg
-                    .input(self.input_path, ss=start_time)
-                    .output(hr_chunk_path, t=duration, c='copy', avoid_negative_ts='make_zero')
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-                )
-                
-                chunk_pairs.append((hr_chunk_path, lr_chunk_path))
-                logger.info(f"Created HR scene chunk {i+1}/{len(scene_times)-1}: {hr_chunk_path} (duration: {duration:.2f}s)")
-            except ffmpeg.Error as e:
-                logger.error(f"Error creating scene chunk {i+1}: {e.stderr.decode() if e.stderr else 'Unknown error'}")
-        
-        return chunk_pairs
-    
     def split_video(self) -> List[Tuple[str, str]]:
         """
         Split the input video into chunks based on the configured strategy.
@@ -170,12 +69,15 @@ class VideoProcessor:
         Returns:
             List of tuples (hr_chunk_path, lr_chunk_path)
         """
-        if self.chunk_strategy == "duration":
-            return self.split_video_by_duration()
-        elif self.chunk_strategy == "scene_detection":
-            return self.split_video_by_scene()
-        else:
-            raise ValueError(f"Unknown chunk strategy: {self.chunk_strategy}")
+        # Use the enhanced SceneDetector to handle all splitting
+        return self.scene_detector.split_video_with_output_pairs(
+            self.input_path,
+            self.hr_directory,
+            self.lr_directory,
+            chunk_strategy=self.chunk_strategy,
+            chunk_duration=self.chunk_duration,
+            min_chunk_duration=self.min_chunk_duration
+        )
     
     def process_chunk(self, hr_chunk_path: str, lr_chunk_path: str) -> str:
         """
@@ -332,3 +234,12 @@ class VideoProcessor:
         except Exception as e:
             logger.error(f"Error processing video: {str(e)}")
             raise
+
+    def detect_scene_changes(self, video_path: str) -> List[int]:
+        """
+        Detect scene changes in a video using the SceneDetector.
+        """
+        logger.info(f"Detecting scene changes in: {video_path}")
+        scene_times = self.scene_detector.detect_scenes(video_path)
+        logger.info(f"Detected {len(scene_times)} scene changes")
+        return scene_times
