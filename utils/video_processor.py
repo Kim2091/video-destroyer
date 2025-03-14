@@ -11,7 +11,11 @@ from .degradations.resize_degradation import ResizeDegradation
 from .logging_utils import DegradationLogger
 
 logger = logging.getLogger(__name__)
-
+# Configure root logger
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M'
+)
 
 class VideoProcessor:
     """
@@ -84,8 +88,10 @@ class VideoProcessor:
         """Helper method to create ffmpeg split command using frame numbers for precise cutting"""
         ffmpeg_cmd = [
             'ffmpeg', '-y',
+            '-hide_banner',
+            '-loglevel', 'error',
             '-i', self.input_path,
-            '-r', str(self.video_info['fps']),  # Add input framerate
+            '-r', str(self.video_info['fps']),
             '-vf', f'select=between(n\,{start_frame}\,{end_frame-1}),setpts=PTS-STARTPTS',
             '-c:v', 'hevc_nvenc',
             '-preset', self.split_preset,
@@ -199,7 +205,7 @@ class VideoProcessor:
             )
             
             logger.info(f"Splitting chunk {len(scene_list)+1}: {output_file}")
-            subprocess.run(ffmpeg_cmd, check=True)
+            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             scene_list.append(output_file)
         
@@ -301,12 +307,3 @@ class VideoProcessor:
         logger.info(f"Processed {len(processed_pairs)} chunks with a total of {total_frames} frames")
         
         return processed_pairs
-
-    def detect_scene_changes(self, video_path: str) -> List[int]:
-        """
-        Detect scene changes in a video using the SceneDetector.
-        """
-        logger.info(f"Detecting scene changes in: {video_path}")
-        scene_times = self.scene_detector.detect_scenes(video_path)
-        logger.info(f"Detected {len(scene_times)} scene changes")
-        return scene_times

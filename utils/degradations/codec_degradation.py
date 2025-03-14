@@ -21,14 +21,9 @@ class CodecDegradation(BaseDegradation):
     
     def get_params(self) -> Dict[str, Any]:
         """Return the parameters used for this degradation"""
-        # Don't generate new random values, use the stored ones
         return {
             "codec": self.selected_params.get("codec"),
-            "quality": self.selected_params.get("quality"),
-            "codec_probabilities": {
-                name: config['probability']
-                for name, config in self.config['params'].items()
-            }
+            "quality": self.selected_params.get("quality")
         }
     
     def get_codec_params(self, codec: str, quality: int, video_info: Dict[str, Any] = None) -> Dict[str, Any]:
@@ -58,7 +53,9 @@ class CodecDegradation(BaseDegradation):
         common_params = {
             'fps_mode': 'cfr',
             'pix_fmt': pix_fmt,
-            'g': gop_size
+            'g': gop_size,
+            'loglevel': 'error',  # Add this
+            'hide_banner': None   # Add this
         }
         
         # Codec-specific parameters
@@ -90,7 +87,7 @@ class CodecDegradation(BaseDegradation):
             ffmpeg
             .input(input_path)
             .output(output_path, **output_params)
-            .global_args('-hide_banner', '-loglevel', 'error')
+            .global_args('-hide_banner', '-loglevel', 'error', '-nostats')
             .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
         )
         

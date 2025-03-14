@@ -82,7 +82,7 @@ class DegradationPipeline:
                     probability=degradation.probability,
                     params=degradation.get_params()
                 )
-            logger.info(f"Applied degradation {i+1}/{len(self.degradations)}: {degradation.name}")
+            logger.debug(f"Applied degradation {i+1}/{len(self.degradations)}: {degradation.name}")
         
         # Apply codec degradation last if it should be applied (FIXED INDENTATION)
         if codec_applied:
@@ -100,7 +100,7 @@ class DegradationPipeline:
                     probability=self.codec_degradation.probability,
                     params=self.codec_degradation.get_params()
                 )
-            logger.info(f"Applied final codec degradation: {self.codec_degradation.name}")
+            logger.debug(f"Applied final codec degradation: {self.codec_degradation.name}")
         elif self.codec_degradation:
             # Log that codec was skipped
             if self.codec_degradation.logger:
@@ -110,7 +110,7 @@ class DegradationPipeline:
                     probability=self.codec_degradation.probability,
                     params=None
                 )
-            logger.info(f"Skipped final codec degradation: {self.codec_degradation.name}")
+            logger.debug(f"Skipped final codec degradation: {self.codec_degradation.name}")
             # If no codec degradation, we still need to output the stream
             stream = ffmpeg.output(stream, output_path)
 

@@ -50,7 +50,7 @@ class ResizeDegradation(BaseDegradation):
         if self.down_up.get('enabled', False):
             params.update({
                 'down_up': 'enabled',
-                'intermediate_scale': self.selected_params['intermediate_scale'],
+                'intermediate_scale': round(self.selected_params['intermediate_scale'], 3),
                 'up_filter': self.selected_params['up_filter']
             })
         else:
