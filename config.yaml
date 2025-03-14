@@ -23,6 +23,7 @@ logging:
   file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Degradation pipeline configuration
+# DO NOT REARRANGE ORDER OF DEGRADATIONS
 degradations:
   - name: "resize"
     enabled: true
