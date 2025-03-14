@@ -65,6 +65,7 @@ class CodecDegradation(BaseDegradation):
             ffmpeg
             .input(input_path)
             .output(output_path, **output_params)
+            .global_args('-hide_banner', '-loglevel', 'error')  # Add these args
             .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
         )
         

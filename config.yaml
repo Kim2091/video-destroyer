@@ -1,5 +1,5 @@
 # Use forward slashes or double backslashes for Windows paths
-input_video: "C:/Users/Kim/Downloads/HR.mkv"
+input_video: "C:/Users/Kim/Downloads/bn/2/hr2.mkv"
 output_directory: "L:/Datasets/output"
 chunks_directory: "chunks"  # Will contain HR and LR subfolders
 
@@ -62,3 +62,5 @@ logging:
   directory: "logs"  # Directory to store log files
   filename: "degradation_log.log"
   level: "INFO"
+  console_format: "%(message)s"  # Simplified console output
+  file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"  # Detailed file output

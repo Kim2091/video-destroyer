@@ -16,44 +16,67 @@ class DegradationLogger:
         # Create logs directory
         os.makedirs(log_dir, exist_ok=True)
         
-        # Set up file handler
+        # Set up logger
         self.logger = logging.getLogger('degradation_logger')
         self.logger.setLevel(getattr(logging, log_level))
+        self.logger.propagate = False  # Prevent duplicate logging
         
-        # Create a file handler with timestamp in filename
+        # Clear any existing handlers
+        self.logger.handlers = []
+        
+        # Create file handler with timestamp
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         log_path = os.path.join(log_dir, f"{timestamp}_{log_file}")
         
-        handler = logging.FileHandler(log_path)
-        handler.setLevel(getattr(logging, log_level))
+        file_handler = logging.FileHandler(log_path)
+        file_handler.setLevel(getattr(logging, log_level))
         
-        # Create a formatter
-        formatter = logging.Formatter(
-            '%(asctime)s - %(levelname)s - %(message)s'
+        # Create console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(getattr(logging, log_level))
+        
+        # Create formatters
+        file_formatter = logging.Formatter(
+            log_config.get('file_format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         )
-        handler.setFormatter(formatter)
+        console_formatter = logging.Formatter(
+            log_config.get('console_format', '%(message)s')
+        )
         
-        # Add handler to logger
-        self.logger.addHandler(handler)
+        # Set formatters
+        file_handler.setFormatter(file_formatter)
+        console_handler.setFormatter(console_formatter)
+        
+        # Add handlers
+        self.logger.addHandler(file_handler)
+        self.logger.addHandler(console_handler)
     
     def log_chunk_start(self, chunk_path: str) -> None:
         """Log the start of chunk processing"""
         self.logger.info(f"\nProcessing chunk: {os.path.basename(chunk_path)}")
     
+    # In the log_degradation_applied method, change the status symbols
     def log_degradation_applied(self, 
-                              degradation_name: str,
-                              was_applied: bool,
-                              probability: float,
-                              params: Dict[str, Any] = None) -> None:
+                            degradation_name: str,
+                            was_applied: bool,
+                            probability: float,
+                            params: Dict[str, Any] = None) -> None:
         """Log information about a degradation application"""
-        status = "APPLIED" if was_applied else "SKIPPED"
-        log_entry = {
-            "degradation": degradation_name,
-            "status": status,
-            "probability": probability,
-            "params": params or {}
-        }
-        self.logger.info(json.dumps(log_entry))
+        status = "[+]" if was_applied else "[-]"  # Using ASCII characters instead of ✓ and ✗
+        message = f"  {status} {degradation_name.capitalize()} degradation"
+        if was_applied and params:
+            param_str = " ".join(f"{k}={v}" for k, v in params.items() if k != "codec_probabilities")
+            message += f" ({param_str})"
+        self.logger.info(message)
+        
+        # Log detailed parameters to file only
+        if params:
+            self.logger.debug(json.dumps({
+                "degradation": degradation_name,
+                "applied": was_applied,
+                "probability": probability,
+                "params": params
+            }))
     
     def log_chunk_complete(self, chunk_path: str) -> None:
         """Log the completion of chunk processing"""

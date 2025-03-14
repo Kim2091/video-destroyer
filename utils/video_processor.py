@@ -148,7 +148,8 @@ class VideoProcessor:
             )
             
             logger.info(f"Splitting scene {i+1}/{len(filtered_scene_list)}: {output_file} (frames {start_frame}-{end_frame})")
-            subprocess.run(ffmpeg_cmd, check=True)
+            
+            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         return self._create_chunk_pairs()    
     
