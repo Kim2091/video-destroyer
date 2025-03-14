@@ -15,25 +15,31 @@ This toolkit consists of two main components:
    - Extracts frame sequences from video chunks
    - Supports scene-based or time-based extraction
    - Creates paired HR/LR frame sequences
+   
+- Note: You MUST have ffmpeg in your PATH to use this program
 
 ## 🚀 Quick Start
 
-1. Install dependencies:
+1. Run this command to clone the repository
 ```bash
-pip install ffmpeg-python scenedetect
+git clone https://github.com/Kim2091/video-destroyer/
 ```
-   - Note: You MUST have ffmpeg in your PATH
 
-2. **Edit ```config.yaml``` and configure it as you wish**
+2. Install Python dependencies (and ensure ffmpeg is in your PATH):
+```bash
+pip install -r requirements.txt
+```
+
+3. **Edit ```config.yaml``` and configure it as you wish**
     - Specify the path to the video
     - Customize video degradations
 
-3. Run the video processor:
+4. Run the video processor:
 ```bash
 python main.py --config config.yaml
 ```
 
-4. Extract frame sequences:
+5. Extract frame sequences:
 ```bash
 python frame_extractor.py
 ```
