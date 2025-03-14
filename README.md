@@ -1,4 +1,5 @@
 # Video Destroyer
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/J3J3BCC3L)
 
 A tool designed to create datasets from a single high quality input video for AI training purposes. It processes videos by splitting them into chunks, applying random codecs and quality settings (more degredations to come), and finally extracting frame sequences.
 
