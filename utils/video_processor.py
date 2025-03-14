@@ -1,13 +1,10 @@
 import os
-import shutil
-import subprocess
-import json
 import ffmpeg
-from typing import Dict, Any, Tuple, List, Optional
+from typing import Dict, Any, Tuple, List
 import logging
-import tempfile
-import platform
+from scenedetect.video_splitter import split_video_ffmpeg
 from utils.scene_detector import SceneDetector
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -34,19 +31,11 @@ class VideoProcessor:
         self.chunk_strategy = config.get('chunk_strategy', 'scene_detection')
         self.chunk_duration = config.get('chunk_duration', 5)
         self.min_chunk_duration = config.get('min_chunk_duration', 3)
+        self.split_preset = config.get('split_preset', 'slow')
+        self.strip_audio = config.get('strip_audio', True)
         
-        # Scene detection parameters
-        self.scene_detection = config.get('scene_detection', {})
-        self.scene_threshold = self.scene_detection.get('threshold', 0.3)
-        self.scene_min_scene_length = self.scene_detection.get('min_scene_length', 2.0)
-        self.scene_method = self.scene_detection.get('method', 'content')
-        
-        # Initialize scene detector
-        self.scene_detector = scene_detector or SceneDetector(
-            threshold=self.scene_threshold,
-            min_scene_length=self.scene_min_scene_length,
-            method=self.scene_method
-        )
+        # Initialize scene detector with config object
+        self.scene_detector = scene_detector or SceneDetector(config=config)
         
         self.codec_handler = codec_handler
         
@@ -62,6 +51,120 @@ class VideoProcessor:
         # Get video info for later use
         self.video_info = self.scene_detector.get_video_info(self.input_path)
     
+    def _create_ffmpeg_split_command(self, start_frame, end_frame, output_file):
+        """Helper method to create ffmpeg split command using frame numbers for precise cutting"""
+        ffmpeg_cmd = [
+            'ffmpeg', '-y',
+            '-i', self.input_path,
+            '-r', str(self.video_info['fps']),  # Add input framerate
+            '-vf', f'select=between(n\,{start_frame}\,{end_frame-1}),setpts=PTS-STARTPTS',
+            '-c:v', 'hevc_nvenc',
+            '-preset', self.split_preset,
+            '-qp', '0',
+            '-pix_fmt', 'yuv420p',
+            '-fps_mode', 'cfr'
+        ]
+        
+        if self.strip_audio:
+            ffmpeg_cmd.extend(['-an', '-map', '0:v:0'])
+        else:
+            ffmpeg_cmd.extend(['-map', '0:v:0', '-map', '0:a?', '-map', '0:s?'])
+        
+        ffmpeg_cmd.append(output_file)
+        return ffmpeg_cmd
+    
+    def _create_chunk_pairs(self):
+        """Helper method to create HR/LR pairs from HR chunks"""
+        chunk_files = [os.path.join(self.hr_directory, f) for f in os.listdir(self.hr_directory) 
+                      if f.endswith(".mp4")]
+        chunk_files.sort()
+        
+        chunk_pairs = []
+        for hr_chunk_path in chunk_files:
+            basename = os.path.basename(hr_chunk_path)
+            lr_chunk_path = os.path.join(self.lr_directory, basename)
+            chunk_pairs.append((hr_chunk_path, lr_chunk_path))
+        
+        logger.info(f"Created {len(chunk_pairs)} HR/LR video chunk pairs")
+        return chunk_pairs
+    
+    def split_video_by_scenes(self) -> List[Tuple[str, str]]:
+        """
+        Split the input video into chunks based on scene detection using frame numbers.
+        
+        Returns:
+            List of tuples (hr_chunk_path, lr_chunk_path)
+        """
+        scene_list = self.scene_detector.detect_scenes(self.input_path)
+        
+        # Filter out scenes that are too short
+        filtered_scene_list = []
+        fps = self.video_info['fps']
+        min_frames = int(self.min_chunk_duration * fps)
+        
+        for scene in scene_list:
+            start_frame = scene[0].get_frames()
+            end_frame = scene[1].get_frames()
+            frame_count = end_frame - start_frame
+            
+            if frame_count >= min_frames:
+                filtered_scene_list.append((start_frame, end_frame))
+            else:
+                logger.info(f"Skipping scene (frame count {frame_count} is less than minimum {min_frames})")
+        
+        # Process each scene
+        for i, (start_frame, end_frame) in enumerate(filtered_scene_list):
+            output_file = os.path.join(self.hr_directory, f'chunk_{i+1:04d}.mp4')
+            
+            ffmpeg_cmd = self._create_ffmpeg_split_command(
+                start_frame, end_frame, output_file
+            )
+            
+            logger.info(f"Splitting scene {i+1}/{len(filtered_scene_list)}: {output_file} (frames {start_frame}-{end_frame})")
+            subprocess.run(ffmpeg_cmd, check=True)
+        
+        return self._create_chunk_pairs()    
+    
+    def split_video_by_duration(self) -> List[Tuple[str, str]]:
+        """
+        Split the input video into chunks of fixed duration.
+        
+        Returns:
+            List of tuples (hr_chunk_path, lr_chunk_path)
+        """
+        logger.info(f"Splitting video by duration with chunk_duration={self.chunk_duration}s")
+        
+        # Get video info
+        fps = self.video_info['fps']
+        total_frames = self.video_info.get('nb_frames')
+        
+        if not total_frames:
+            # If nb_frames isn't available, estimate from duration
+            duration = self.video_info.get('duration')
+            if not duration:
+                raise ValueError("Cannot determine video duration")
+            total_frames = int(float(duration) * fps)
+        
+        # Create frame-based chunks
+        chunk_frames = int(self.chunk_duration * fps)
+        scene_list = []
+        
+        for start_frame in range(0, total_frames, chunk_frames):
+            end_frame = min(start_frame + chunk_frames, total_frames)
+            
+            output_file = os.path.join(self.hr_directory, f'chunk_{len(scene_list)+1:04d}.mp4')
+            
+            ffmpeg_cmd = self._create_ffmpeg_split_command(
+                start_frame, end_frame, output_file
+            )
+            
+            logger.info(f"Splitting chunk {len(scene_list)+1}: {output_file}")
+            subprocess.run(ffmpeg_cmd, check=True)
+            
+            scene_list.append(output_file)
+        
+        return self._create_chunk_pairs()    
+    
     def split_video(self) -> List[Tuple[str, str]]:
         """
         Split the input video into chunks based on the configured strategy.
@@ -69,15 +172,19 @@ class VideoProcessor:
         Returns:
             List of tuples (hr_chunk_path, lr_chunk_path)
         """
-        # Use the enhanced SceneDetector to handle all splitting
-        return self.scene_detector.split_video_with_output_pairs(
-            self.input_path,
-            self.hr_directory,
-            self.lr_directory,
-            chunk_strategy=self.chunk_strategy,
-            chunk_duration=self.chunk_duration,
-            min_chunk_duration=self.min_chunk_duration
-        )
+        # Clean directories
+        for directory in [self.hr_directory, self.lr_directory]:
+            for file in os.listdir(directory):
+                file_path = os.path.join(directory, file)
+                if os.path.isfile(file_path):
+                    os.unlink(file_path)
+        
+        if self.chunk_strategy == "scene_detection":
+            return self.split_video_by_scenes()
+        elif self.chunk_strategy == "duration":
+            return self.split_video_by_duration()
+        else:
+            raise ValueError(f"Unknown chunk strategy: {self.chunk_strategy}")
     
     def process_chunk(self, hr_chunk_path: str, lr_chunk_path: str) -> str:
         """
@@ -93,98 +200,46 @@ class VideoProcessor:
         # Select random codec and quality
         codec, quality = self.codec_handler.get_random_encoding_config()
         
-        try:
-            logger.info(f"Processing chunk with codec {codec} at quality {quality}: {hr_chunk_path}")
-            
-            # Get the framerate and other parameters from the original video
-            fps = self.video_info['fps']
-            width = self.video_info['width']
-            height = self.video_info['height']
-            pix_fmt = self.video_info['pix_fmt']
-            
-            # Configure codec-specific parameters
-            if codec == 'h264':
-                # H.264 encoding with CRF quality
-                (
-                    ffmpeg
-                    .input(hr_chunk_path)
-                    .output(lr_chunk_path, vcodec='libx264', crf=quality, preset='medium', 
-                           r=fps, vsync='cfr', video_bitrate=0, pix_fmt=pix_fmt,
-                           g=int(fps*2))  # Set GOP size to 2 seconds
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-                )
-            elif codec == 'h265':
-                # H.265/HEVC encoding with CRF quality
-                (
-                    ffmpeg
-                    .input(hr_chunk_path)
-                    .output(lr_chunk_path, vcodec='libx265', crf=quality, preset='medium', 
-                           r=fps, vsync='cfr', video_bitrate=0, pix_fmt=pix_fmt,
-                           g=int(fps*2))
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-                )
-            elif codec == 'vp9':
-                # VP9 encoding with CRF quality
-                (
-                    ffmpeg
-                    .input(hr_chunk_path)
-                    .output(lr_chunk_path, vcodec='libvpx-vp9', crf=quality, b=0, 
-                           r=fps, vsync='cfr', pix_fmt=pix_fmt,
-                           g=int(fps*2))
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-                )
-            elif codec == 'av1':
-                try:
-                    # SVT-AV1 encoding with CRF quality
-                    (
-                        ffmpeg
-                        .input(hr_chunk_path)
-                        .output(lr_chunk_path, vcodec='libsvtav1', crf=quality, preset=7, 
-                               r=fps, vsync='cfr', pix_fmt=pix_fmt,
-                               g=int(fps*2))
-                        .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-                    )
-                except ffmpeg.Error as e:
-                    # If SVT-AV1 fails, raise an error
-                    error_message = e.stderr if isinstance(e.stderr, str) else e.stderr.decode() if e.stderr else 'Unknown error'
-                    logger.error(f"SVT-AV1 encoding failed: {error_message}")
-                    logger.error("Make sure SVT-AV1 is installed and properly configured.")
-                    raise
-            elif codec == 'mpeg1':
-                # MPEG-1 encoding with qscale quality
-                # For MPEG-1, qscale ranges from 1 (best) to 31 (worst)
-                (
-                    ffmpeg
-                    .input(hr_chunk_path)
-                    .output(lr_chunk_path, vcodec='mpeg1video', qscale=quality, 
-                           r=fps, vsync='cfr', pix_fmt=pix_fmt,
-                           g=int(fps*2))
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-                )
-            elif codec == 'mpeg2':
-                # MPEG-2 encoding with qscale quality
-                # For MPEG-2, qscale ranges from 1 (best) to 31 (worst)
-                (
-                    ffmpeg
-                    .input(hr_chunk_path)
-                    .output(lr_chunk_path, vcodec='mpeg2video', qscale=quality, 
-                           r=fps, vsync='cfr', pix_fmt=pix_fmt,
-                           g=int(fps*2))
-                    .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-                )
-            else:
-                raise ValueError(f"Unsupported codec: {codec}")
-            
-            logger.info(f"Finished processing chunk with codec {codec} at quality {quality}: {lr_chunk_path}")
-            return lr_chunk_path
-            
-        except ffmpeg.Error as e:
-            error_message = e.stderr if isinstance(e.stderr, str) else e.stderr.decode() if e.stderr else 'Unknown error'
-            logger.error(f"FFmpeg error: {error_message}")
-            raise
-        except Exception as e:
-            logger.error(f"Error processing chunk: {str(e)}")
-            raise
+        logger.info(f"Processing chunk with codec {codec} at quality {quality}: {hr_chunk_path}")
+        
+        # Get the framerate and other parameters from the original video
+        fps = self.video_info['fps']
+        pix_fmt = self.video_info['pix_fmt']
+        gop_size = int(fps*2)  # Set GOP size to 2 seconds
+        
+        # Common parameters for all codecs
+        common_params = {
+            'fps_mode': 'cfr',
+            'pix_fmt': pix_fmt,
+            'g': gop_size
+        }
+        
+        # Configure codec-specific parameters
+        codec_params = {
+            'h264': {'vcodec': 'libx264', 'crf': quality, 'preset': 'medium', 'video_bitrate': 0},
+            'h265': {'vcodec': 'libx265', 'crf': quality, 'preset': 'medium', 'video_bitrate': 0},
+            'vp9': {'vcodec': 'libvpx-vp9', 'crf': quality, 'b': 0},
+            'av1': {'vcodec': 'libsvtav1', 'crf': quality, 'preset': 7},
+            'mpeg1': {'vcodec': 'mpeg1video', 'qscale': quality},
+            'mpeg2': {'vcodec': 'mpeg2video', 'qscale': quality}
+        }
+        
+        if codec not in codec_params:
+            raise ValueError(f"Unsupported codec: {codec}")
+        
+        # Combine common and codec-specific parameters
+        output_params = {**common_params, **codec_params[codec]}
+        
+        # Process the chunk
+        (
+            ffmpeg
+            .input(hr_chunk_path)
+            .output(lr_chunk_path, **output_params)
+            .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
+        )
+        
+        logger.info(f"Finished processing chunk with codec {codec} at quality {quality}: {lr_chunk_path}")
+        return lr_chunk_path
     
     def process_chunks(self, chunk_pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         """
@@ -203,8 +258,11 @@ class VideoProcessor:
         for i, (hr_path, lr_path) in enumerate(chunk_pairs):
             try:
                 logger.info(f"Processing chunk {i+1}/{len(chunk_pairs)}: {hr_path}")
-                self.process_chunk(hr_path, lr_path)
-                processed_pairs.append((hr_path, lr_path))
+                if os.path.exists(hr_path):
+                    self.process_chunk(hr_path, lr_path)
+                    processed_pairs.append((hr_path, lr_path))
+                else:
+                    logger.error(f"HR chunk file not found: {hr_path}")
             except Exception as e:
                 logger.error(f"Failed to process chunk {i+1}/{len(chunk_pairs)}: {str(e)}")
         
@@ -217,23 +275,30 @@ class VideoProcessor:
         Returns:
             List of tuples (hr_chunk_path, lr_chunk_path) for successfully processed chunks
         """
-        try:
-            # Step 1: Split the video into chunks
-            logger.info(f"Starting video processing for: {self.input_path}")
-            logger.info("Step 1: Splitting video into chunks...")
-            chunk_pairs = self.split_video()
-            logger.info(f"Created {len(chunk_pairs)} chunks")
-            
-            # Step 2: Process each chunk with a random codec and quality
-            logger.info("Step 2: Processing chunks with random codecs...")
-            processed_pairs = self.process_chunks(chunk_pairs)
-            logger.info(f"Processed {len(processed_pairs)} chunks")
-            
-            return processed_pairs
-            
-        except Exception as e:
-            logger.error(f"Error processing video: {str(e)}")
-            raise
+        # Step 1: Split the video into chunks
+        logger.info(f"Starting video processing for: {self.input_path}")
+        logger.info("Step 1: Splitting video into chunks...")
+        chunk_pairs = self.split_video()
+        logger.info(f"Created {len(chunk_pairs)} chunks")
+        
+        # Step 2: Process each chunk with a random codec and quality
+        logger.info("Step 2: Processing chunks with random codecs...")
+        processed_pairs = self.process_chunks(chunk_pairs)
+        
+        # Print total frame count summary
+        total_frames = 0
+        for hr_path, _ in processed_pairs:
+            try:
+                probe = ffmpeg.probe(hr_path)
+                stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+                frames = int(stream.get('nb_frames', 0))
+                total_frames += frames
+            except Exception as e:
+                logger.error(f"Error getting frame count for {hr_path}: {str(e)}")
+        
+        logger.info(f"Processed {len(processed_pairs)} chunks with a total of {total_frames} frames")
+        
+        return processed_pairs
 
     def detect_scene_changes(self, video_path: str) -> List[int]:
         """
