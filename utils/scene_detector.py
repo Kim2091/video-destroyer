@@ -1,10 +1,11 @@
 import logging
-import yaml
 from typing import Dict, Any
+import yaml
 import ffmpeg
 from scenedetect import SceneManager, open_video, ContentDetector
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class SceneDetector:
     """
@@ -98,7 +99,7 @@ class SceneDetector:
         Returns:
             List of scene boundaries
         """
-        logger.info(f"Detecting scenes in {video_path} with threshold {self.threshold}...")
+        logger.info("Detecting scenes...")
 
         # Open video with the new API
         video = open_video(video_path)
@@ -111,13 +112,13 @@ class SceneDetector:
         scene_manager.detect_scenes(video)
 
         # Get list of scenes
-        scene_list = scene_manager.get_scene_list()
+        scene_list = scene_manager.get_scene_list()  # Add this line
         logger.info(f"Detected {len(scene_list)} scenes")
 
-        # Print scene information for debugging
+        # Print scene information with simpler format
         for i, scene in enumerate(scene_list):
             start_frame = scene[0].get_frames()
             end_frame = scene[1].get_frames()
-            logger.info(f"Scene {i}: frames {start_frame} to {end_frame} (length: {end_frame - start_frame})")
+            logger.debug(f"Scene {i}: frames {start_frame} to {end_frame} (length: {end_frame - start_frame})")
 
         return scene_list

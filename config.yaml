@@ -1,5 +1,5 @@
 # Use forward slashes or double backslashes for Windows paths
-input_video: "C:/Users/Kim/Downloads/HR.mkv"
+input_video: "C:/Users/Kim/Downloads/bn/2/hr2.mkv"
 output_directory: "L:/Datasets/output"
 chunks_directory: "chunks"  # Will contain HR and LR subfolders
 
@@ -11,44 +11,48 @@ min_chunk_duration: 1  # Minimum chunk duration for scene detection
 # Scene detection parameters
 scene_detection:
   threshold: 30  # Threshold for content detector
-  
-  # Video splitting settings
   split_preset: "slow"  # FFmpeg preset for splitting (fast, medium, slow)
   strip_audio: true  # Whether to remove audio from output chunks
 
-# Temporary directory for chunks
-temp_directory: "L:/Datasets/video_destroyer/temp_chunks"
+# Logging configuration
+logging:
+  directory: "logs"
+  filename: "degradation.log"
+  level: "INFO"
+  console_format: "%(message)s"
+  file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-codecs:
-  h264:
-    probability: 0.25
-    quality_range:
-      min: 18
-      max: 28
-  h265:
-    probability: 0.2
-    quality_range:
-      min: 20
-      max: 30
-  vp9:
-    probability: 0
-    quality_range:
-      min: 20
-      max: 40
-  av1:
-    probability: 0.1
-    quality_range:
-      min: 25
-      max: 45
-  mpeg1:
-    probability: 0.15
-    quality_range:
-      min: 5  # Better quality (qscale: 1-31, lower is better)
-      max: 25  # Worse quality
-  mpeg2:
-    probability: 0.30
-    quality_range:
-      min: 5  # Better quality (qscale: 1-31, lower is better)
-      max: 25  # Worse quality
+# Degradation pipeline configuration
+degradations:
+  - name: "resize"
+    enabled: true
+    probability: 1.0
+    params:
+      fixed_scale: 0.5
+      down_up:
+        enabled: true
+        range: [0.5, 0.8]  # [min, max] downscale factors
+      scaling_filters: ["bilinear", "bicubic", "lanczos", "neighbor", "area"]
 
-# Future degradation options can be added here
+  - name: "codec"
+    enabled: true
+    probability: 1.0
+    params:
+      h264:
+        probability: 0.5
+        quality_range: [18, 35]  # [min, max] CRF values
+      h265:
+        probability: 0.1
+        quality_range: [20, 30]
+      vp9:
+        probability: 0
+        quality_range: [20, 40]
+      av1:
+        probability: 0.10
+        quality_range: [25, 45]
+      mpeg1:
+        probability: 0.15
+        quality_range: [1, 5]  # qscale: 1-31, lower is better
+      mpeg2:
+        probability: 0.15
+        quality_range: [5, 7]  # qscale: 1-31, lower is better

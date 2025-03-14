@@ -1,13 +1,22 @@
-import os
-import ffmpeg
-from typing import Dict, Any, Tuple, List
 import logging
-from scenedetect.video_splitter import split_video_ffmpeg
-from utils.scene_detector import SceneDetector
+import os
 import subprocess
+from typing import Any, Dict, List, Tuple
+
+import ffmpeg
+from utils.scene_detector import SceneDetector
+
+from .degradation_pipeline import DegradationPipeline
+from .degradations.codec_degradation import CodecDegradation
+from .degradations.resize_degradation import ResizeDegradation
+from .logging_utils import DegradationLogger
 
 logger = logging.getLogger(__name__)
-
+# Configure root logger
+logging.basicConfig(
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M'
+)
 
 class VideoProcessor:
     """
@@ -39,6 +48,31 @@ class VideoProcessor:
         
         self.codec_handler = codec_handler
         
+        # Initialize logger first
+        self.logger = DegradationLogger(config)
+
+        # Initialize degradation pipeline with logger
+        self.degradation_pipeline = DegradationPipeline(config)
+
+        # First add all non-codec degradations
+        for degradation_config in config.get('degradations', []):
+            if degradation_config.get('enabled', True) and degradation_config['name'] != 'codec':
+                degradation_class = self.get_degradation_class(degradation_config['name'])
+                if degradation_class:
+                    self.degradation_pipeline.add_degradation(
+                        degradation_class(degradation_config, self.logger)
+                    )
+        
+        # Then add codec degradation last (if it exists in config)
+        for degradation_config in config.get('degradations', []):
+            if degradation_config.get('enabled', True) and degradation_config['name'] == 'codec':
+                codec_class = self.get_degradation_class('codec')
+                if codec_class:
+                    self.degradation_pipeline.add_degradation(
+                        codec_class(degradation_config, self.logger)
+                    )
+
+
         # Verify input file exists
         if not os.path.exists(self.input_path):
             raise FileNotFoundError(f"Input video not found: {self.input_path}")
@@ -55,11 +89,14 @@ class VideoProcessor:
         """Helper method to create ffmpeg split command using frame numbers for precise cutting"""
         ffmpeg_cmd = [
             'ffmpeg', '-y',
+            '-hide_banner',
+            '-loglevel', 'error',
             '-i', self.input_path,
-            '-r', str(self.video_info['fps']),  # Add input framerate
+            '-r', str(self.video_info['fps']),
             '-vf', f'select=between(n\,{start_frame}\,{end_frame-1}),setpts=PTS-STARTPTS',
             '-c:v', 'hevc_nvenc',
             '-preset', self.split_preset,
+            '-tune', 'lossless',
             '-qp', '0',
             '-pix_fmt', 'yuv420p',
             '-fps_mode', 'cfr'
@@ -72,7 +109,16 @@ class VideoProcessor:
         
         ffmpeg_cmd.append(output_file)
         return ffmpeg_cmd
-    
+
+    def get_degradation_class(self, name: str):
+        """Get the degradation class by name"""
+        degradation_classes = {
+            'codec': CodecDegradation,
+            'resize': ResizeDegradation
+            # Add other degradation classes here as they're implemented
+        }
+        return degradation_classes.get(name)
+
     def _create_chunk_pairs(self):
         """Helper method to create HR/LR pairs from HR chunks"""
         chunk_files = [os.path.join(self.hr_directory, f) for f in os.listdir(self.hr_directory) 
@@ -121,7 +167,8 @@ class VideoProcessor:
             )
             
             logger.info(f"Splitting scene {i+1}/{len(filtered_scene_list)}: {output_file} (frames {start_frame}-{end_frame})")
-            subprocess.run(ffmpeg_cmd, check=True)
+            
+            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         
         return self._create_chunk_pairs()    
     
@@ -159,7 +206,7 @@ class VideoProcessor:
             )
             
             logger.info(f"Splitting chunk {len(scene_list)+1}: {output_file}")
-            subprocess.run(ffmpeg_cmd, check=True)
+            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             
             scene_list.append(output_file)
         
@@ -197,49 +244,11 @@ class VideoProcessor:
         Returns:
             Path to the processed chunk
         """
-        # Select random codec and quality
-        codec, quality = self.codec_handler.get_random_encoding_config()
-        
-        logger.info(f"Processing chunk with codec {codec} at quality {quality}: {hr_chunk_path}")
-        
-        # Get the framerate and other parameters from the original video
-        fps = self.video_info['fps']
-        pix_fmt = self.video_info['pix_fmt']
-        gop_size = int(fps*2)  # Set GOP size to 2 seconds
-        
-        # Common parameters for all codecs
-        common_params = {
-            'fps_mode': 'cfr',
-            'pix_fmt': pix_fmt,
-            'g': gop_size
-        }
-        
-        # Configure codec-specific parameters
-        codec_params = {
-            'h264': {'vcodec': 'libx264', 'crf': quality, 'preset': 'medium', 'video_bitrate': 0},
-            'h265': {'vcodec': 'libx265', 'crf': quality, 'preset': 'medium', 'video_bitrate': 0},
-            'vp9': {'vcodec': 'libvpx-vp9', 'crf': quality, 'b': 0},
-            'av1': {'vcodec': 'libsvtav1', 'crf': quality, 'preset': 7},
-            'mpeg1': {'vcodec': 'mpeg1video', 'qscale': quality},
-            'mpeg2': {'vcodec': 'mpeg2video', 'qscale': quality}
-        }
-        
-        if codec not in codec_params:
-            raise ValueError(f"Unsupported codec: {codec}")
-        
-        # Combine common and codec-specific parameters
-        output_params = {**common_params, **codec_params[codec]}
-        
-        # Process the chunk
-        (
-            ffmpeg
-            .input(hr_chunk_path)
-            .output(lr_chunk_path, **output_params)
-            .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-        )
-        
-        logger.info(f"Finished processing chunk with codec {codec} at quality {quality}: {lr_chunk_path}")
-        return lr_chunk_path
+
+        self.logger.log_chunk_start(hr_chunk_path)
+        result = self.degradation_pipeline.process_video(hr_chunk_path, lr_chunk_path)
+        self.logger.log_chunk_complete(lr_chunk_path)
+        return result
     
     def process_chunks(self, chunk_pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         """
@@ -299,12 +308,3 @@ class VideoProcessor:
         logger.info(f"Processed {len(processed_pairs)} chunks with a total of {total_frames} frames")
         
         return processed_pairs
-
-    def detect_scene_changes(self, video_path: str) -> List[int]:
-        """
-        Detect scene changes in a video using the SceneDetector.
-        """
-        logger.info(f"Detecting scene changes in: {video_path}")
-        scene_times = self.scene_detector.detect_scenes(video_path)
-        logger.info(f"Detected {len(scene_times)} scene changes")
-        return scene_times

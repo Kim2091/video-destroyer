@@ -1,0 +1,26 @@
+# Ignore the 'frames' folder
+frames/
+
+# Ignore the 'chunks' folder
+chunks/
+
+# Ignore all __pycache__ folders
+__pycache__/
+
+# Ignore external folder
+external/
+
+# Ignore Logs
+logs/
+
+# Ignore any .pyc, .pyo, and .pyd files (Python compiled files)
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore any .DS_Store files (macOS)
+.DS_Store
+
+# Ignore any IDE-specific files (optional)
+.vscode/
+.idea/
