@@ -7,6 +7,7 @@ from utils.scene_detector import SceneDetector
 import subprocess
 from .degradation_pipeline import DegradationPipeline
 from .degradations.codec_degradation import CodecDegradation
+from .degradations.resize_degradation import ResizeDegradation
 from .logging_utils import DegradationLogger
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ class VideoProcessor:
             '-vf', f'select=between(n\,{start_frame}\,{end_frame-1}),setpts=PTS-STARTPTS',
             '-c:v', 'hevc_nvenc',
             '-preset', self.split_preset,
+            '-tune', 'lossless',
             '-qp', '0',
             '-pix_fmt', 'yuv420p',
             '-fps_mode', 'cfr'
@@ -104,7 +106,8 @@ class VideoProcessor:
     def get_degradation_class(self, name: str):
         """Get the degradation class by name"""
         degradation_classes = {
-            'codec': CodecDegradation
+            'codec': CodecDegradation,
+            'resize': ResizeDegradation
             # Add other degradation classes here as they're implemented
         }
         return degradation_classes.get(name)

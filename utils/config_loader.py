@@ -14,6 +14,55 @@ def validate_degradation_config(degradation: Dict[str, Any]) -> None:
     for field in required_fields:
         if field not in degradation:
             raise ValueError(f"Required field '{field}' missing in degradation configuration")
+            
+    # Validate specific degradation types
+    if degradation['name'] == 'resize':
+        params = degradation['params']
+        if 'down_up' in params and 'range' in params['down_up']:
+            range_val = params['down_up']['range']
+            if not isinstance(range_val, list) or len(range_val) != 2:
+                raise ValueError("resize down_up.range must be a list of [min, max]")
+                
+    elif degradation['name'] == 'codec':
+        params = degradation['params']
+        for codec in params.values():
+            if 'quality_range' in codec:
+                range_val = codec['quality_range']
+                if not isinstance(range_val, list) or len(range_val) != 2:
+                    raise ValueError("codec quality_range must be a list of [min, max]")
+
+
+def convert_ranges_to_dict(config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Convert array ranges to dictionary format for backward compatibility.
+    
+    Args:
+        config: Configuration dictionary
+        
+    Returns:
+        Updated configuration dictionary
+    """
+    for degradation in config.get('degradations', []):
+        params = degradation.get('params', {})
+        
+        if degradation['name'] == 'resize':
+            if 'down_up' in params and isinstance(params['down_up'].get('range'), list):
+                range_list = params['down_up']['range']
+                params['down_up']['range'] = {
+                    'min': range_list[0],
+                    'max': range_list[1]
+                }
+                
+        elif degradation['name'] == 'codec':
+            for codec in params.values():
+                if isinstance(codec.get('quality_range'), list):
+                    range_list = codec['quality_range']
+                    codec['quality_range'] = {
+                        'min': range_list[0],
+                        'max': range_list[1]
+                    }
+                    
+    return config
 
 
 def load_config(config_path: str) -> Dict[str, Any]:
@@ -50,7 +99,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
         'output_directory', 
         'chunks_directory', 
         'chunk_strategy',
-        'degradations'  # New required field
+        'degradations'
     ]
     for field in required_fields:
         if field not in config:
@@ -64,6 +113,9 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Validate each degradation
     for degradation in degradations:
         validate_degradation_config(degradation)
+    
+    # Convert array ranges to dictionary format for backward compatibility
+    config = convert_ranges_to_dict(config)
         
     # For backward compatibility, create codecs config from degradations
     codec_degradation = next(
