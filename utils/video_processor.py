@@ -48,13 +48,22 @@ class VideoProcessor:
         # Initialize degradation pipeline with logger
         self.degradation_pipeline = DegradationPipeline(config)
 
-        # Add degradations with logger
+        # First add all non-codec degradations
         for degradation_config in config.get('degradations', []):
-            if degradation_config.get('enabled', True):
+            if degradation_config.get('enabled', True) and degradation_config['name'] != 'codec':
                 degradation_class = self.get_degradation_class(degradation_config['name'])
                 if degradation_class:
                     self.degradation_pipeline.add_degradation(
                         degradation_class(degradation_config, self.logger)
+                    )
+        
+        # Then add codec degradation last (if it exists in config)
+        for degradation_config in config.get('degradations', []):
+            if degradation_config.get('enabled', True) and degradation_config['name'] == 'codec':
+                codec_class = self.get_degradation_class('codec')
+                if codec_class:
+                    self.degradation_pipeline.add_degradation(
+                        codec_class(degradation_config, self.logger)
                     )
 
 

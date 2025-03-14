@@ -19,12 +19,20 @@ scene_detection:
 # Temporary directory for chunks
 temp_directory: "L:/Datasets/video_destroyer/temp_chunks"
 
+# Logging configuration
+logging:
+  directory: "logs"  # Directory to store log files
+  filename: "degradation_log.log"
+  level: "INFO"
+  console_format: "%(message)s"  # Simplified console output
+  file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"  # Detailed file output
+
 # Degradation pipeline configuration
-# The order of degradations in this list determines the order they are applied
-degradations:
+degradations:  # Added this key
+  # Codec must be last in the pipeline
   - name: "codec"
     enabled: true
-    probability: 1
+    probability: 1.0
     params:
       h264:
         probability: 0.25
@@ -56,11 +64,3 @@ degradations:
         quality_range:
           min: 5  # Better quality (qscale: 1-31, lower is better)
           max: 25  # Worse quality
-
-# Logging configuration
-logging:
-  directory: "logs"  # Directory to store log files
-  filename: "degradation_log.log"
-  level: "INFO"
-  console_format: "%(message)s"  # Simplified console output
-  file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"  # Detailed file output

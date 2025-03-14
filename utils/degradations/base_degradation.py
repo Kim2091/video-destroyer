@@ -20,21 +20,20 @@ class BaseDegradation(ABC):
         return random.random() < self.probability
     
     def process(self, input_path: str, output_path: str) -> str:
-        """Process the video, applying degradation based on probability"""
+        """Process the video, logging whether it would have been applied based on probability"""
         should_apply = self.should_apply()
         
         # Log degradation attempt
         if self.logger:
             self.logger.log_degradation_applied(
                 degradation_name=self.name,
-                was_applied=should_apply,
+                was_applied=True,  # Always applied for piping
                 probability=self.probability,
                 params=self.get_params()
             )
         
-        if should_apply:
-            return self.apply(input_path, output_path)
-        return input_path
+        # Always apply the degradation for piping
+        return self.apply(input_path, output_path)
     
     @abstractmethod
     def get_params(self) -> Dict[str, Any]:

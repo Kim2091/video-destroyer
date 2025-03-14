@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 import os
 from .degradations.base_degradation import BaseDegradation
+from .degradations.codec_degradation import CodecDegradation
 
 logger = logging.getLogger(__name__)
 
@@ -12,14 +13,19 @@ class DegradationPipeline:
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.degradations: List[BaseDegradation] = []
+        self.codec_degradation = None
         
     def add_degradation(self, degradation: BaseDegradation) -> None:
         """Add a degradation to the pipeline"""
-        self.degradations.append(degradation)
+        # Store codec degradation separately
+        if isinstance(degradation, CodecDegradation):
+            self.codec_degradation = degradation
+        else:
+            self.degradations.append(degradation)
         
     def process_video(self, input_path: str, output_path: str) -> str:
         """
-        Apply all degradations in sequence to the input video.
+        Apply all degradations in sequence to the input video, with codec always last.
         
         Args:
             input_path: Path to input video
@@ -35,7 +41,7 @@ class DegradationPipeline:
         os.makedirs(temp_dir, exist_ok=True)
         
         try:
-            # Apply each degradation in sequence
+            # Apply each non-codec degradation in sequence
             for i, degradation in enumerate(self.degradations):
                 # Create temporary output path for this degradation
                 temp_output = os.path.join(
@@ -43,12 +49,21 @@ class DegradationPipeline:
                     f"temp_{i}_{degradation.name}_{Path(output_path).name}"
                 )
                 
-                # Use process() instead of apply() to respect probability
-                current_input = degradation.process(current_input, temp_output)
-                if current_input == temp_output:
-                    logger.info(f"Applied degradation {i+1}/{len(self.degradations)}: {degradation.name}")
-                else:
-                    logger.info(f"Skipped degradation {i+1}/{len(self.degradations)}: {degradation.name}")
+                # Always apply the degradation (ignore probability for piping)
+                current_input = degradation.apply(current_input, temp_output)
+                logger.info(f"Applied degradation {i+1}/{len(self.degradations)}: {degradation.name}")
+            
+            # Always apply codec degradation last if it exists
+            if self.codec_degradation:
+                # Create temporary output path for codec degradation
+                codec_output = os.path.join(
+                    temp_dir, 
+                    f"temp_final_codec_{Path(output_path).name}"
+                )
+                
+                # Apply codec degradation
+                current_input = self.codec_degradation.apply(current_input, codec_output)
+                logger.info(f"Applied final codec degradation: {self.codec_degradation.name}")
             
             # Move final result to output path
             if current_input != output_path:
