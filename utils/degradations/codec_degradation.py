@@ -20,10 +20,11 @@ class CodecDegradation(BaseDegradation):
         return "codec"
     
     def get_params(self) -> Dict[str, Any]:
-        codec, quality = self.codec_handler.get_random_encoding_config()
+        """Return the parameters used for this degradation"""
+        # Don't generate new random values, use the stored ones
         return {
-            "codec": codec,
-            "quality": quality,
+            "codec": self.selected_params.get("codec"),
+            "quality": self.selected_params.get("quality"),
             "codec_probabilities": {
                 name: config['probability']
                 for name, config in self.config['params'].items()
@@ -104,15 +105,19 @@ class CodecDegradation(BaseDegradation):
             video_info: Optional video information from probe
             
         Returns:
-            FFmpeg output stream ready to be run
+            Tuple[stream, params]: The input stream and codec parameters
         """
-        # Select random codec and quality
+        # Select random codec and quality ONCE
         codec, quality = self.codec_handler.get_random_encoding_config()
+        
+        # Store selected parameters for logging first
+        self.selected_params = {
+            "codec": codec,
+            "quality": quality
+        }
         
         # Get encoding parameters
         params = self.get_codec_params(codec, quality, video_info)
         
-        # Since codec is the final step, we should return an output stream
-        # The output path will be set by the pipeline later
-        # Just return the stream with codec parameters applied
+        # Return the stream and parameters separately
         return input_stream, params
