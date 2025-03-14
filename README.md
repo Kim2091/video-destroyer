@@ -22,9 +22,11 @@ This toolkit consists of two main components:
 ```bash
 pip install ffmpeg-python scenedetect
 ```
-Note: You MUST have ffmpeg in your PATH
+   - Note: You MUST have ffmpeg in your PATH
 
-2. Edit `config.yaml` and configure it as you wish
+2. **Edit ```config.yaml``` and configure it as you wish**
+    - Specify the path to the video
+    - Customize video degradations
 
 3. Run the video processor:
 ```bash
