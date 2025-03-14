@@ -2,36 +2,37 @@ import logging
 import os
 import subprocess
 from typing import Any, Dict, List, Tuple
+from functools import wraps
 
 import ffmpeg
+from tqdm import tqdm
 from utils.scene_detector import SceneDetector
-
 from .degradation_pipeline import DegradationPipeline
 from .degradations.codec_degradation import CodecDegradation
 from .degradations.resize_degradation import ResizeDegradation
 from .logging_utils import DegradationLogger
 
 logger = logging.getLogger(__name__)
-# Configure root logger
 logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M'
 )
 
+def log_errors(func):
+    """Decorator to handle and log errors"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error in {func.__name__}: {str(e)}")
+            raise
+    return wrapper
+
 class VideoProcessor:
-    """
-    Handles video processing operations using FFmpeg.
-    """
+    """Handles video processing operations using FFmpeg."""
     
     def __init__(self, config: Dict[str, Any], codec_handler, scene_detector=None):
-        """
-        Initialize the video processor.
-        
-        Args:
-            config: Configuration dictionary
-            codec_handler: CodecHandler instance for codec selection
-            scene_detector: SceneDetector instance for scene detection
-        """
         self.input_path = config['input_video']
         self.output_directory = config['output_directory']
         self.chunks_directory = os.path.join(config.get('chunks_directory', 'chunks'))
@@ -43,57 +44,56 @@ class VideoProcessor:
         self.split_preset = config.get('split_preset', 'slow')
         self.strip_audio = config.get('strip_audio', True)
         
-        # Initialize scene detector with config object
+        # Initialize components
         self.scene_detector = scene_detector or SceneDetector(config=config)
-        
         self.codec_handler = codec_handler
-        
-        # Initialize logger first
         self.logger = DegradationLogger(config)
-
-        # Initialize degradation pipeline with logger
         self.degradation_pipeline = DegradationPipeline(config)
-
-        # First add all non-codec degradations
-        for degradation_config in config.get('degradations', []):
-            if degradation_config.get('enabled', True) and degradation_config['name'] != 'codec':
-                degradation_class = self.get_degradation_class(degradation_config['name'])
-                if degradation_class:
-                    self.degradation_pipeline.add_degradation(
-                        degradation_class(degradation_config, self.logger)
-                    )
         
-        # Then add codec degradation last (if it exists in config)
-        for degradation_config in config.get('degradations', []):
-            if degradation_config.get('enabled', True) and degradation_config['name'] == 'codec':
-                codec_class = self.get_degradation_class('codec')
-                if codec_class:
-                    self.degradation_pipeline.add_degradation(
-                        codec_class(degradation_config, self.logger)
-                    )
+        # Setup
+        self._verify_input_file()
+        self._setup_directories()
+        self._setup_degradations(config)
+        self.video_info = self.scene_detector.get_video_info(self.input_path)
 
-
-        # Verify input file exists
+    def _verify_input_file(self):
+        """Verify input file exists"""
         if not os.path.exists(self.input_path):
             raise FileNotFoundError(f"Input video not found: {self.input_path}")
-        
-        # Create output and chunks directories if they don't exist
-        os.makedirs(self.output_directory, exist_ok=True)
-        os.makedirs(self.hr_directory, exist_ok=True)
-        os.makedirs(self.lr_directory, exist_ok=True)
-        
-        # Get video info for later use
-        self.video_info = self.scene_detector.get_video_info(self.input_path)
-    
+
+    def _setup_directories(self):
+        """Create necessary directories"""
+        directories = [self.output_directory, self.hr_directory, self.lr_directory]
+        for directory in directories:
+            os.makedirs(directory, exist_ok=True)
+
+    def _setup_degradations(self, config):
+        """Set up degradation pipeline"""
+        for degradation_config in config.get('degradations', []):
+            if not degradation_config.get('enabled', True):
+                continue
+            
+            degradation_class = self.get_degradation_class(degradation_config['name'])
+            if degradation_class:
+                self.degradation_pipeline.add_degradation(
+                    degradation_class(degradation_config, self.logger)
+                )
+
     def _create_ffmpeg_split_command(self, start_frame, end_frame, output_file):
-        """Helper method to create ffmpeg split command using frame numbers for precise cutting"""
+        """Create FFmpeg command for splitting video"""
+        start_time = start_frame / self.video_info['fps']
+        duration = (end_frame - start_frame) / self.video_info['fps']
+        seek_offset = max(0, start_time - 2)
+        
         ffmpeg_cmd = [
             'ffmpeg', '-y',
             '-hide_banner',
             '-loglevel', 'error',
+            '-nostats',
+            '-ss', str(seek_offset),
             '-i', self.input_path,
-            '-r', str(self.video_info['fps']),
-            '-vf', f'select=between(n\,{start_frame}\,{end_frame-1}),setpts=PTS-STARTPTS',
+            '-ss', str(start_time - seek_offset),
+            '-t', str(duration),
             '-c:v', 'hevc_nvenc',
             '-preset', self.split_preset,
             '-tune', 'lossless',
@@ -110,121 +110,101 @@ class VideoProcessor:
         ffmpeg_cmd.append(output_file)
         return ffmpeg_cmd
 
+    def _process_chunk_range(self, start_frame: int, end_frame: int, chunk_number: int) -> str:
+        """Process a range of frames into a chunk"""
+        output_file = os.path.join(self.hr_directory, f'chunk_{chunk_number:04d}.mp4')
+        ffmpeg_cmd = self._create_ffmpeg_split_command(start_frame, end_frame, output_file)
+        
+        logger.info(f"Splitting chunk {chunk_number}: {output_file} (frames {start_frame}-{end_frame})")
+        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return output_file
+
+    def _get_frame_count(self, video_path: str) -> int:
+        """Get frame count from video file"""
+        try:
+            probe = ffmpeg.probe(video_path)
+            stream = next((stream for stream in probe['streams'] 
+                         if stream['codec_type'] == 'video'), None)
+            return int(stream.get('nb_frames', 0))
+        except Exception as e:
+            logger.error(f"Error getting frame count for {video_path}: {str(e)}")
+            return 0
+
     def get_degradation_class(self, name: str):
         """Get the degradation class by name"""
         degradation_classes = {
             'codec': CodecDegradation,
             'resize': ResizeDegradation
-            # Add other degradation classes here as they're implemented
         }
         return degradation_classes.get(name)
 
     def _create_chunk_pairs(self):
-        """Helper method to create HR/LR pairs from HR chunks"""
-        chunk_files = [os.path.join(self.hr_directory, f) for f in os.listdir(self.hr_directory) 
-                      if f.endswith(".mp4")]
-        chunk_files.sort()
-        
-        chunk_pairs = []
-        for hr_chunk_path in chunk_files:
-            basename = os.path.basename(hr_chunk_path)
-            lr_chunk_path = os.path.join(self.lr_directory, basename)
-            chunk_pairs.append((hr_chunk_path, lr_chunk_path))
+        """Create HR/LR pairs from HR chunks"""
+        chunk_files = sorted([f for f in os.listdir(self.hr_directory) if f.endswith(".mp4")])
+        chunk_pairs = [(os.path.join(self.hr_directory, f), 
+                       os.path.join(self.lr_directory, f)) for f in chunk_files]
         
         logger.info(f"Created {len(chunk_pairs)} HR/LR video chunk pairs")
         return chunk_pairs
-    
+
+    @log_errors
     def split_video_by_scenes(self) -> List[Tuple[str, str]]:
-        """
-        Split the input video into chunks based on scene detection using frame numbers.
-        
-        Returns:
-            List of tuples (hr_chunk_path, lr_chunk_path)
-        """
+        """Split video into chunks based on scene detection"""
         scene_list = self.scene_detector.detect_scenes(self.input_path)
+        min_frames = int(self.min_chunk_duration * self.video_info['fps'])
         
-        # Filter out scenes that are too short
-        filtered_scene_list = []
-        fps = self.video_info['fps']
-        min_frames = int(self.min_chunk_duration * fps)
-        
-        for scene in scene_list:
+        # Filter scenes and prepare for processing
+        filtered_scenes = []
+        for i, scene in enumerate(scene_list):
             start_frame = scene[0].get_frames()
             end_frame = scene[1].get_frames()
-            frame_count = end_frame - start_frame
-            
-            if frame_count >= min_frames:
-                filtered_scene_list.append((start_frame, end_frame))
+            scene_duration = (end_frame - start_frame) / self.video_info['fps']
+            if end_frame - start_frame >= min_frames:
+                filtered_scenes.append((start_frame, end_frame))
             else:
-                logger.info(f"Skipping scene (frame count {frame_count} is less than minimum {min_frames})")
-        
-        # Process each scene
-        for i, (start_frame, end_frame) in enumerate(filtered_scene_list):
-            output_file = os.path.join(self.hr_directory, f'chunk_{i+1:04d}.mp4')
-            
-            ffmpeg_cmd = self._create_ffmpeg_split_command(
-                start_frame, end_frame, output_file
-            )
-            
-            logger.info(f"Splitting scene {i+1}/{len(filtered_scene_list)}: {output_file} (frames {start_frame}-{end_frame})")
-            
-            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        
-        return self._create_chunk_pairs()    
-    
+                logger.info(f"Skipping scene {i+1} due to short duration: {scene_duration:.2f}s (minimum: {self.min_chunk_duration}s)")
+
+        # Process scenes with progress bar
+        logger.info(f"Saving {len(filtered_scenes)} detected scenes...")
+        completed_files = []
+        for i, (start_frame, end_frame) in enumerate(tqdm(filtered_scenes, desc="Saving scenes", unit="scene"), 1):
+            try:
+                output_file = self._process_chunk_range(start_frame, end_frame, i)
+                completed_files.append(output_file)
+            except Exception as e:
+                logger.error(f"Failed to process scene {i}: {str(e)}")
+
+        return self._create_chunk_pairs()
+
+    @log_errors
     def split_video_by_duration(self) -> List[Tuple[str, str]]:
-        """
-        Split the input video into chunks of fixed duration.
+        """Split video into chunks of fixed duration"""
+        logger.info(f"Splitting video by duration: {self.chunk_duration}s")
         
-        Returns:
-            List of tuples (hr_chunk_path, lr_chunk_path)
-        """
-        logger.info(f"Splitting video by duration with chunk_duration={self.chunk_duration}s")
-        
-        # Get video info
         fps = self.video_info['fps']
         total_frames = self.video_info.get('nb_frames')
-        
         if not total_frames:
-            # If nb_frames isn't available, estimate from duration
             duration = self.video_info.get('duration')
             if not duration:
                 raise ValueError("Cannot determine video duration")
             total_frames = int(float(duration) * fps)
         
-        # Create frame-based chunks
         chunk_frames = int(self.chunk_duration * fps)
-        scene_list = []
+        chunk_list = []
         
-        for start_frame in range(0, total_frames, chunk_frames):
+        for i, start_frame in enumerate(range(0, total_frames, chunk_frames), 1):
             end_frame = min(start_frame + chunk_frames, total_frames)
-            
-            output_file = os.path.join(self.hr_directory, f'chunk_{len(scene_list)+1:04d}.mp4')
-            
-            ffmpeg_cmd = self._create_ffmpeg_split_command(
-                start_frame, end_frame, output_file
-            )
-            
-            logger.info(f"Splitting chunk {len(scene_list)+1}: {output_file}")
-            subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
-            scene_list.append(output_file)
+            output_file = self._process_chunk_range(start_frame, end_frame, i)
+            chunk_list.append(output_file)
         
-        return self._create_chunk_pairs()    
-    
+        return self._create_chunk_pairs()
+
     def split_video(self) -> List[Tuple[str, str]]:
-        """
-        Split the input video into chunks based on the configured strategy.
-        
-        Returns:
-            List of tuples (hr_chunk_path, lr_chunk_path)
-        """
-        # Clean directories
+        """Split video based on configured strategy"""
+        # Clean existing files
         for directory in [self.hr_directory, self.lr_directory]:
             for file in os.listdir(directory):
-                file_path = os.path.join(directory, file)
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
+                os.unlink(os.path.join(directory, file))
         
         if self.chunk_strategy == "scene_detection":
             return self.split_video_by_scenes()
@@ -232,79 +212,46 @@ class VideoProcessor:
             return self.split_video_by_duration()
         else:
             raise ValueError(f"Unknown chunk strategy: {self.chunk_strategy}")
-    
-    def process_chunk(self, hr_chunk_path: str, lr_chunk_path: str) -> str:
-        """
-        Process a video chunk with a randomly selected codec and quality.
-        
-        Args:
-            hr_chunk_path: Path to the input high-resolution chunk
-            lr_chunk_path: Path to save the processed low-resolution chunk
-            
-        Returns:
-            Path to the processed chunk
-        """
 
+    @log_errors
+    def process_chunk(self, hr_chunk_path: str, lr_chunk_path: str) -> str:
+        """Process a video chunk with degradations"""
         self.logger.log_chunk_start(hr_chunk_path)
         result = self.degradation_pipeline.process_video(hr_chunk_path, lr_chunk_path)
         self.logger.log_chunk_complete(lr_chunk_path)
         return result
-    
+
     def process_chunks(self, chunk_pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
-        """
-        Process all video chunks with random codecs and quality settings.
-        
-        Args:
-            chunk_pairs: List of tuples (hr_chunk_path, lr_chunk_path)
-            
-        Returns:
-            List of tuples (hr_chunk_path, lr_chunk_path) for successfully processed chunks
-        """
+        """Process all chunks with degradations"""
+        logger.info(f"Processing {len(chunk_pairs)} chunks")
         processed_pairs = []
         
-        logger.info(f"Processing {len(chunk_pairs)} chunks with random codecs and quality settings")
-        
-        for i, (hr_path, lr_path) in enumerate(chunk_pairs):
+        for i, (hr_path, lr_path) in enumerate(chunk_pairs, 1):
             try:
-                logger.info(f"Processing chunk {i+1}/{len(chunk_pairs)}: {hr_path}")
                 if os.path.exists(hr_path):
                     self.process_chunk(hr_path, lr_path)
                     processed_pairs.append((hr_path, lr_path))
                 else:
-                    logger.error(f"HR chunk file not found: {hr_path}")
+                    logger.error(f"HR chunk not found: {hr_path}")
             except Exception as e:
-                logger.error(f"Failed to process chunk {i+1}/{len(chunk_pairs)}: {str(e)}")
+                logger.error(f"Failed to process chunk {i}: {str(e)}")
         
         return processed_pairs
-    
+
     def process_video(self) -> List[Tuple[str, str]]:
-        """
-        Process the input video by splitting it into chunks and applying random codecs.
+        """Process video end-to-end"""
+        logger.info(f"Processing video: {self.input_path}")
         
-        Returns:
-            List of tuples (hr_chunk_path, lr_chunk_path) for successfully processed chunks
-        """
-        # Step 1: Split the video into chunks
-        logger.info(f"Starting video processing for: {self.input_path}")
-        logger.info("Step 1: Splitting video into chunks...")
+        # Step 1: Split video into chunks
+        logger.info("Splitting video into chunks...")
         chunk_pairs = self.split_video()
-        logger.info(f"Created {len(chunk_pairs)} chunks")
         
-        # Step 2: Process each chunk with a random codec and quality
-        logger.info("Step 2: Processing chunks with random codecs...")
+        # Step 2: Apply degradations
+        logger.info("Processing chunks with degradations...")
         processed_pairs = self.process_chunks(chunk_pairs)
         
-        # Print total frame count summary
-        total_frames = 0
-        for hr_path, _ in processed_pairs:
-            try:
-                probe = ffmpeg.probe(hr_path)
-                stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-                frames = int(stream.get('nb_frames', 0))
-                total_frames += frames
-            except Exception as e:
-                logger.error(f"Error getting frame count for {hr_path}: {str(e)}")
-        
-        logger.info(f"Processed {len(processed_pairs)} chunks with a total of {total_frames} frames")
+        # Summarize results
+        total_frames = sum(self._get_frame_count(hr_path) for hr_path, _ in processed_pairs)
+        logger.info(f"Processed {len(processed_pairs)} chunks ({total_frames} frames)")
         
         return processed_pairs
