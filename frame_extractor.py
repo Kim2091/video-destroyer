@@ -23,7 +23,7 @@ class FrameSequenceExtractor:
     """
     
     def __init__(self, chunks_directory: str, output_directory: str, sequence_length: int = 5,
-                use_scene_detection: bool = False, max_sequences: int = None):
+                use_scene_detection: bool = False, max_sequences: int = None, time_gap: float = 3.0):
         """
         Initialize the frame sequence extractor.
         
@@ -50,6 +50,8 @@ class FrameSequenceExtractor:
         
         # Global sequence counter
         self.sequence_counter = 1
+
+        self.time_gap = time_gap
     
     def get_chunk_pairs(self) -> List[Tuple[str, str]]:
         """
@@ -69,26 +71,7 @@ class FrameSequenceExtractor:
                 chunk_pairs.append((hr_chunk, lr_chunk))
         
         return chunk_pairs
-    
-    def detect_scene_changes(self, video_path: str) -> List[int]:
-        """
-        Detect scene changes in a video using the SceneDetector.
         
-        Args:
-            video_path: Path to the video
-            
-        Returns:
-            List of frame numbers where scene changes occur
-        """
-        logger.info(f"Detecting scene changes in: {video_path}")
-        
-        # Initialize the scene detector
-        scene_detector = SceneDetector()
-        scene_times = scene_detector.detect_scenes(video_path)
-        
-        logger.info(f"Detected {len(scene_times)} scene changes")
-        return scene_times
-    
     def get_video_info(self, video_path: str) -> Dict[str, Any]:
         """
         Get information about a video.
@@ -189,8 +172,8 @@ class FrameSequenceExtractor:
                     return False
                 
                 # Destination paths
-                hr_dst_path = os.path.join(self.hr_frames_dir, f"show_{sequence_id}_Frame{i+1:04d}.png")
-                lr_dst_path = os.path.join(self.lr_frames_dir, f"show_{sequence_id}_Frame{i+1:04d}.png")
+                hr_dst_path = os.path.join(self.hr_frames_dir, f"show{sequence_id}_Frame{i+1:04d}.png")
+                lr_dst_path = os.path.join(self.lr_frames_dir, f"show{sequence_id}_Frame{i+1:04d}.png")
                 
                 # Copy frames
                 import shutil
@@ -205,8 +188,8 @@ class FrameSequenceExtractor:
             logger.error(f"Error creating sequence: {str(e)}")
             # Clean up any partially extracted frames
             for i in range(self.sequence_length):
-                hr_frame_path = os.path.join(self.hr_frames_dir, f"show_{sequence_id}_Frame{i+1:04d}.png")
-                lr_frame_path = os.path.join(self.lr_frames_dir, f"show_{sequence_id}_Frame{i+1:04d}.png")
+                hr_frame_path = os.path.join(self.hr_frames_dir, f"show{sequence_id}_Frame{i+1:04d}.png")
+                lr_frame_path = os.path.join(self.lr_frames_dir, f"show{sequence_id}_Frame{i+1:04d}.png")
                 
                 if os.path.exists(hr_frame_path):
                     os.remove(hr_frame_path)
@@ -218,13 +201,6 @@ class FrameSequenceExtractor:
     def extract_sequences_from_chunk_pair(self, hr_path: str, lr_path: str) -> int:
         """
         Extract frame sequences from a pair of HR and LR chunks.
-        
-        Args:
-            hr_path: Path to the HR chunk
-            lr_path: Path to the LR chunk
-            
-        Returns:
-            Number of sequences extracted
         """
         logger.info(f"Extracting sequences from chunk pair: {os.path.basename(hr_path)}")
         
@@ -238,12 +214,18 @@ class FrameSequenceExtractor:
             hr_frame_count = self.extract_frames_to_temp(hr_path, hr_temp_dir)
             lr_frame_count = self.extract_frames_to_temp(lr_path, lr_temp_dir)
             
+            # Get video info to calculate frame skip
+            video_info = self.get_video_info(hr_path)
+            fps = video_info['fps']
+            
+            # Only calculate frames_to_skip if we're not using scene detection
+            frames_to_skip = int(self.time_gap * fps) if self.time_gap is not None else 0
+            
             logger.info(f"Extracted {hr_frame_count} HR frames and {lr_frame_count} LR frames")
             
             # Verify that both videos have the same number of frames
             if hr_frame_count != lr_frame_count:
                 logger.warning(f"HR and LR videos have different frame counts: {hr_frame_count} vs {lr_frame_count}")
-                # Use the minimum frame count
                 frame_count = min(hr_frame_count, lr_frame_count)
             else:
                 frame_count = hr_frame_count
@@ -252,22 +234,27 @@ class FrameSequenceExtractor:
             start_frames = []
             
             if self.use_scene_detection:
-                # Use scene detection to determine start frames
-                scene_frames = self.detect_scene_changes(hr_path)
-                # Convert scene frames to 1-indexed
-                start_frames = [frame + 1 for frame in scene_frames]
+                # Initialize scene detector
+                scene_detector = SceneDetector()
+                # Get scene list
+                scene_list = scene_detector.detect_scenes(hr_path)
+                
+                # Convert scene boundaries to start frames
+                for scene in scene_list:
+                    start_frame = scene[0].get_frames() + 1  # +1 because ffmpeg is 1-indexed
+                    # Only add if there's enough frames left for a full sequence
+                    if start_frame + self.sequence_length <= frame_count:
+                        start_frames.append(start_frame)
             else:
-                # Extract evenly spaced sequences
-                # Calculate how many sequences we can extract
+                # Extract sequences with time-based gaps
                 max_start_frame = frame_count - self.sequence_length + 1
                 
                 if max_start_frame <= 0:
                     logger.warning(f"Video too short to extract sequences of length {self.sequence_length}")
                     return 0
                 
-                # FIXED: Use sequence_length as step to ensure no overlap or duplicates
-                # This ensures each frame is used exactly once in a sequence
-                step = self.sequence_length  
+                # Step is sequence_length plus the frames we want to skip
+                step = self.sequence_length + frames_to_skip
                 
                 # Generate start frames
                 start_frames = list(range(1, max_start_frame + 1, step))
@@ -310,7 +297,9 @@ class FrameSequenceExtractor:
             if os.path.exists(hr_temp_dir):
                 shutil.rmtree(hr_temp_dir)
             if os.path.exists(lr_temp_dir):
-                shutil.rmtree(lr_temp_dir)    
+                shutil.rmtree(lr_temp_dir)   
+
+
     def extract_all_sequences(self) -> int:
         """
         Extract frame sequences from all chunk pairs.
@@ -335,23 +324,32 @@ class FrameSequenceExtractor:
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Extract frame sequences from video chunks')
-    parser.add_argument('--chunks_dir', type=str, default='chunks',
+    parser.add_argument('-c', '--chunks_dir', type=str, default='chunks',
                         help='Directory containing HR and LR chunks')
-    parser.add_argument('--output_dir', type=str, default='frames',
+    parser.add_argument('-o', '--output_dir', type=str, default='frames',
                         help='Directory to save extracted frames')
-    parser.add_argument('--sequence_length', type=int, default=5,
+    parser.add_argument('-s', '--sequence_length', type=int, default=5,
                         help='Number of frames in each sequence')
-    parser.add_argument('--use_scene_detection', action='store_true',
-                        help='Use scene detection to determine sequence start points')
-    parser.add_argument('--max_sequences', type=int, default=None,
+    parser.add_argument('-d', '--use_scene_detection', action='store_true',
+                        help='NOTE: Unnecessary if using scene detect in main.py || Use scene detection to determine sequence start points')
+    parser.add_argument('-m', '--max_sequences', type=int, default=None,
                         help='Maximum number of sequences to extract per chunk pair')
+    parser.add_argument('-t', '--time_gap', type=float, default=None,
+                        help='Time in seconds to skip between sequences (default: 3.0, disabled when using scene detection)')
     args = parser.parse_args()
     
     try:
+        # Set time_gap based on scene detection setting
+        time_gap = None if args.use_scene_detection else (args.time_gap if args.time_gap is not None else 3.0)
+        
         # Initialize frame sequence extractor
         extractor = FrameSequenceExtractor(
-            args.chunks_dir, args.output_dir, args.sequence_length,
-            args.use_scene_detection, args.max_sequences
+            args.chunks_dir, 
+            args.output_dir, 
+            args.sequence_length,
+            args.use_scene_detection, 
+            args.max_sequences,
+            time_gap
         )
         
         # Extract sequences
