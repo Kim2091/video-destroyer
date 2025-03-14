@@ -5,6 +5,9 @@ import logging
 from scenedetect.video_splitter import split_video_ffmpeg
 from utils.scene_detector import SceneDetector
 import subprocess
+from .degradation_pipeline import DegradationPipeline
+from .degradations.codec_degradation import CodecDegradation
+from .logging_utils import DegradationLogger
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +42,22 @@ class VideoProcessor:
         
         self.codec_handler = codec_handler
         
+        # Initialize logger first
+        self.logger = DegradationLogger(config)
+
+        # Initialize degradation pipeline with logger
+        self.degradation_pipeline = DegradationPipeline(config)
+
+        # Add degradations with logger
+        for degradation_config in config.get('degradations', []):
+            if degradation_config.get('enabled', True):
+                degradation_class = self.get_degradation_class(degradation_config['name'])
+                if degradation_class:
+                    self.degradation_pipeline.add_degradation(
+                        degradation_class(degradation_config, self.logger)
+                    )
+
+
         # Verify input file exists
         if not os.path.exists(self.input_path):
             raise FileNotFoundError(f"Input video not found: {self.input_path}")
@@ -72,7 +91,15 @@ class VideoProcessor:
         
         ffmpeg_cmd.append(output_file)
         return ffmpeg_cmd
-    
+
+    def get_degradation_class(self, name: str):
+        """Get the degradation class by name"""
+        degradation_classes = {
+            'codec': CodecDegradation
+            # Add other degradation classes here as they're implemented
+        }
+        return degradation_classes.get(name)
+
     def _create_chunk_pairs(self):
         """Helper method to create HR/LR pairs from HR chunks"""
         chunk_files = [os.path.join(self.hr_directory, f) for f in os.listdir(self.hr_directory) 
@@ -197,49 +224,11 @@ class VideoProcessor:
         Returns:
             Path to the processed chunk
         """
-        # Select random codec and quality
-        codec, quality = self.codec_handler.get_random_encoding_config()
-        
-        logger.info(f"Processing chunk with codec {codec} at quality {quality}: {hr_chunk_path}")
-        
-        # Get the framerate and other parameters from the original video
-        fps = self.video_info['fps']
-        pix_fmt = self.video_info['pix_fmt']
-        gop_size = int(fps*2)  # Set GOP size to 2 seconds
-        
-        # Common parameters for all codecs
-        common_params = {
-            'fps_mode': 'cfr',
-            'pix_fmt': pix_fmt,
-            'g': gop_size
-        }
-        
-        # Configure codec-specific parameters
-        codec_params = {
-            'h264': {'vcodec': 'libx264', 'crf': quality, 'preset': 'medium', 'video_bitrate': 0},
-            'h265': {'vcodec': 'libx265', 'crf': quality, 'preset': 'medium', 'video_bitrate': 0},
-            'vp9': {'vcodec': 'libvpx-vp9', 'crf': quality, 'b': 0},
-            'av1': {'vcodec': 'libsvtav1', 'crf': quality, 'preset': 7},
-            'mpeg1': {'vcodec': 'mpeg1video', 'qscale': quality},
-            'mpeg2': {'vcodec': 'mpeg2video', 'qscale': quality}
-        }
-        
-        if codec not in codec_params:
-            raise ValueError(f"Unsupported codec: {codec}")
-        
-        # Combine common and codec-specific parameters
-        output_params = {**common_params, **codec_params[codec]}
-        
-        # Process the chunk
-        (
-            ffmpeg
-            .input(hr_chunk_path)
-            .output(lr_chunk_path, **output_params)
-            .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
-        )
-        
-        logger.info(f"Finished processing chunk with codec {codec} at quality {quality}: {lr_chunk_path}")
-        return lr_chunk_path
+
+        self.logger.log_chunk_start(hr_chunk_path)
+        result = self.degradation_pipeline.process_video(hr_chunk_path, lr_chunk_path)
+        self.logger.log_chunk_complete(lr_chunk_path)
+        return result
     
     def process_chunks(self, chunk_pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         """
