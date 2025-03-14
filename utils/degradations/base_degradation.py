@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any
 import random
+import ffmpeg
 
 class BaseDegradation(ABC):
     """Base class for all video degradations"""
@@ -20,20 +21,24 @@ class BaseDegradation(ABC):
         return random.random() < self.probability
     
     def process(self, input_path: str, output_path: str) -> str:
-        """Process the video, logging whether it would have been applied based on probability"""
+        """Process the video, respecting probability settings"""
         should_apply = self.should_apply()
         
         # Log degradation attempt
         if self.logger:
             self.logger.log_degradation_applied(
                 degradation_name=self.name,
-                was_applied=True,  # Always applied for piping
+                was_applied=should_apply,
                 probability=self.probability,
-                params=self.get_params()
+                params=self.get_params() if should_apply else None
             )
         
-        # Always apply the degradation for piping
-        return self.apply(input_path, output_path)
+        # Only apply the degradation if should_apply is True
+        if should_apply:
+            return self.apply(input_path, output_path)
+        else:
+            # Skip this degradation and return the input path unchanged
+            return input_path
     
     @abstractmethod
     def get_params(self) -> Dict[str, Any]:
@@ -51,6 +56,20 @@ class BaseDegradation(ABC):
             
         Returns:
             str: Path to the degraded video
+        """
+        pass
+    
+    @abstractmethod
+    def apply_piped(self, input_stream, video_info=None):
+        """
+        Apply the degradation to a video stream.
+        
+        Args:
+            input_stream: FFmpeg input stream
+            video_info: Optional video information from probe
+            
+        Returns:
+            FFmpeg output stream
         """
         pass
     

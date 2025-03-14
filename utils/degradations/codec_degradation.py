@@ -1,6 +1,6 @@
 import ffmpeg
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 from .base_degradation import BaseDegradation
 from utils.codec_handler import CodecHandler
 
@@ -30,16 +30,28 @@ class CodecDegradation(BaseDegradation):
             }
         }
     
-    def apply(self, input_path: str, output_path: str) -> str:
-        # Get video info
-        probe = ffmpeg.probe(input_path)
-        video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-        fps = float(video_stream['r_frame_rate'].split('/')[0])
-        pix_fmt = video_stream['pix_fmt']
-        gop_size = int(fps * 2)
+    def get_codec_params(self, codec: str, quality: int, video_info: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Get codec-specific parameters for encoding.
         
-        # Select random codec and quality
-        codec, quality = self.codec_handler.get_random_encoding_config()
+        Args:
+            codec: Codec name (h264, h265, etc.)
+            quality: Quality value for the codec
+            video_info: Optional video information from probe
+            
+        Returns:
+            Dictionary of encoding parameters
+        """
+        # Default values if video_info is not provided
+        fps = 30
+        pix_fmt = 'yuv420p'
+        gop_size = 60
+        
+        # Extract video info if provided
+        if video_info:
+            fps = float(video_info['r_frame_rate'].split('/')[0])
+            pix_fmt = video_info['pix_fmt']
+            gop_size = int(fps * 2)
         
         # Common parameters
         common_params = {
@@ -58,15 +70,49 @@ class CodecDegradation(BaseDegradation):
             'mpeg2': {'vcodec': 'mpeg2video', 'qscale': quality}
         }
         
-        output_params = {**common_params, **codec_params[codec]}
+        return {**common_params, **codec_params[codec]}
+    
+    def apply(self, input_path: str, output_path: str) -> str:
+        """Apply codec degradation using file paths"""
+        # Get video info
+        probe = ffmpeg.probe(input_path)
+        video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
+        
+        # Select random codec and quality
+        codec, quality = self.codec_handler.get_random_encoding_config()
+        
+        # Get encoding parameters
+        output_params = self.get_codec_params(codec, quality, video_stream)
         
         # Process the video
         (
             ffmpeg
             .input(input_path)
             .output(output_path, **output_params)
-            .global_args('-hide_banner', '-loglevel', 'error')  # Add these args
+            .global_args('-hide_banner', '-loglevel', 'error')
             .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
         )
         
         return output_path
+    
+    def apply_piped(self, input_stream, video_info=None):
+        """
+        Apply codec degradation to a video stream and output to a file.
+        
+        Args:
+            input_stream: FFmpeg input stream
+            video_info: Optional video information from probe
+            
+        Returns:
+            FFmpeg output stream ready to be run
+        """
+        # Select random codec and quality
+        codec, quality = self.codec_handler.get_random_encoding_config()
+        
+        # Get encoding parameters
+        params = self.get_codec_params(codec, quality, video_info)
+        
+        # Since codec is the final step, we should return an output stream
+        # The output path will be set by the pipeline later
+        # Just return the stream with codec parameters applied
+        return input_stream, params
