@@ -2,17 +2,15 @@ import os
 import argparse
 import logging
 import ffmpeg
-import subprocess
-import json
 from utils.scene_detector import SceneDetector
 from typing import List, Tuple, Dict, Any
 import glob
-import math
 
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M'  # This matches your desired timestamp format
 )
 logger = logging.getLogger(__name__)
 
