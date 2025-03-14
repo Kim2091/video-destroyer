@@ -103,3 +103,5 @@ This tool is particularly useful for creating training datasets for video enhanc
 2. Process them to create controlled degradations
 3. Extract matching frame sequences
 4. Use the resulting HR/LR pairs for training
+
+Train one yourself with [traiNNer-redux](https://github.com/the-database/traiNNer-redux), using the TSCUNet architecture!
