@@ -1,38 +1,20 @@
 # Use forward slashes or double backslashes for Windows paths
-input_video: "C:/Users/Kim/Projects/scunet/example/LR_motion.mp4"
+input_video: "C:/Users/Kim/Downloads/HR.mkv"
 output_directory: "L:/Datasets/output"
 chunks_directory: "chunks"  # Will contain HR and LR subfolders
 
 # Chunk settings
-# NOTE: if you end up with only one chunk, change to duration
-chunk_strategy: "duration"  # Options: "duration", "scene_detection"
+chunk_strategy: "scene_detection"  # Options: "duration", "scene_detection"
 chunk_duration: 5  # Duration in seconds (used if chunk_strategy is "duration")
-min_chunk_duration: 3  # Minimum chunk duration for scene detection
+min_chunk_duration: 1  # Minimum chunk duration for scene detection
 
 # Scene detection parameters
 scene_detection:
-  # PySceneDetect settings
-  threshold: 5  # Content detection threshold (default: 32)
-  min_scene_length: 0.8  # Minimum scene length in seconds (default: 0.8s)
-  method: "adaptive"  # Detection method: 'content', 'threshold', or 'adaptive'
-  
-  # Detection method descriptions:
-  # - content: Detects fast cuts by comparing frames for content changes.
-  #   Best for videos with quick cuts between scenes.
-  #
-  # - threshold: Detects fades in/out by comparing frames to a black level.
-  #   Best for videos with well-defined scene boundaries using fades to black.
-  #
-  # - adaptive: Uses same scoring as content detection but compares each frame
-  #   score to its neighbors. Works better for videos with varying lighting
-  #   conditions and gradual transitions.
-  
-  # weights for content detection method
-  content_weights: [1.0, 0.5, 1.0, 0.2]  # Weights for content detection algorithm
+  threshold: 30  # Threshold for content detector
   
   # Video splitting settings
   split_preset: "slow"  # FFmpeg preset for splitting (fast, medium, slow)
-  rate_factor: 17  # Quality factor for split video encoding
+  strip_audio: true  # Whether to remove audio from output chunks
 
 # Temporary directory for chunks
 temp_directory: "L:/Datasets/video_destroyer/temp_chunks"
