@@ -41,13 +41,13 @@ degradations:
     params:
       h264:
         probability: 0.5
-        quality_range: [18, 35]  # [min, max] CRF values
+        quality_range: [18, 28]  # [min, max] CRF values
       h265:
         probability: 0.1
         quality_range: [20, 30]
       vp9:
         probability: 0
-        quality_range: [20, 40]
+        quality_range: [18, 28]
       av1:
         probability: 0.10
         quality_range: [25, 45]
@@ -56,4 +56,4 @@ degradations:
         quality_range: [1, 5]  # qscale: 1-31, lower is better
       mpeg2:
         probability: 0.15
-        quality_range: [5, 7]  # qscale: 1-31, lower is better
+        quality_range: [1, 7]  # qscale: 1-31, lower is better
