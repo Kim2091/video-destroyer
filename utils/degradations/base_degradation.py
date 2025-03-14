@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Dict, Any
 import random
-import ffmpeg
 
 class BaseDegradation(ABC):
     """Base class for all video degradations"""

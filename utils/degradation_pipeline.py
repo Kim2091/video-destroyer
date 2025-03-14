@@ -1,7 +1,5 @@
 from typing import List, Dict, Any
 import logging
-from pathlib import Path
-import os
 import ffmpeg
 from .degradations.base_degradation import BaseDegradation
 from .degradations.codec_degradation import CodecDegradation

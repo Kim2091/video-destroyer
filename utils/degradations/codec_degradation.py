@@ -1,5 +1,5 @@
-import ffmpeg
 import logging
+import ffmpeg
 from typing import Dict, Any, Tuple
 from .base_degradation import BaseDegradation
 from utils.codec_handler import CodecHandler

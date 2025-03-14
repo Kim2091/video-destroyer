@@ -1,4 +1,3 @@
-import os
 import logging
 import argparse
 from utils.config_loader import load_config

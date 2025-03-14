@@ -1,10 +1,11 @@
-import os
-import ffmpeg
-from typing import Dict, Any, Tuple, List
 import logging
-from scenedetect.video_splitter import split_video_ffmpeg
-from utils.scene_detector import SceneDetector
+import os
 import subprocess
+from typing import Any, Dict, List, Tuple
+
+import ffmpeg
+from utils.scene_detector import SceneDetector
+
 from .degradation_pipeline import DegradationPipeline
 from .degradations.codec_degradation import CodecDegradation
 from .degradations.resize_degradation import ResizeDegradation

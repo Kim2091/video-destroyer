@@ -1,6 +1,5 @@
 import random
-from typing import Dict, Any, Optional
-import ffmpeg
+from typing import Dict, Any
 import logging
 from .base_degradation import BaseDegradation
 

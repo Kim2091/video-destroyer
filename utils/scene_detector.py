@@ -1,6 +1,6 @@
 import logging
-import yaml
 from typing import Dict, Any
+import yaml
 import ffmpeg
 from scenedetect import SceneManager, open_video, ContentDetector
 
