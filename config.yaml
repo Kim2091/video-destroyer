@@ -1,6 +1,7 @@
 # Use forward slashes or double backslashes for Windows paths
 input_video: "path/to/video"
 chunks_directory: "chunks"  # Will contain HR and LR subfolders
+use_existing_chunks: false  # When true, skips video splitting and processes existing HR chunks
 
 # Chunk settings
 chunk_strategy: "duration"  # Options: "duration", "scene_detection", "frame_count"
