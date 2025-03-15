@@ -54,8 +54,9 @@ class CodecDegradation(BaseDegradation):
             'fps_mode': 'cfr',
             'pix_fmt': pix_fmt,
             'g': gop_size,
-            'loglevel': 'error',  # Add this
-            'hide_banner': None   # Add this
+            'loglevel': 'error',
+            'hide_banner': None,
+            'colorspace': 'bt709'
         }
         
         # Codec-specific parameters
@@ -81,7 +82,7 @@ class CodecDegradation(BaseDegradation):
         
         # Get encoding parameters
         output_params = self.get_codec_params(codec, quality, video_stream)
-        
+
         # Process the video
         (
             ffmpeg
