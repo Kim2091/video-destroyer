@@ -48,7 +48,7 @@ degradations:
     enabled: true
     probability: 0.1
     params:
-      enabled_types: ["gaussian", "box", "motion"]
+      enabled_types: ["gaussian", "box"] # ["gaussian", "box", "motion"]
       gaussian:
         sigma_range: [1.0, 3.0]
         steps_range: [1, 3]
