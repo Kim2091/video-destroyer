@@ -51,9 +51,6 @@ degradations:
       av1:
         probability: 0.10
         quality_range: [25, 45]
-      mpeg1:
-        probability: 0.15
-        quality_range: [1, 5]  # qscale: 1-31, lower is better
       mpeg2:
         probability: 0.15
         quality_range: [1, 7]  # qscale: 1-31, lower is better
