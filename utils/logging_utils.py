@@ -7,11 +7,14 @@ from typing import Dict, Any
 class DegradationLogger:
     """Handles logging of degradation information"""
     
+class DegradationLogger:
+    """Handles logging of degradation information"""
+    
     def __init__(self, config: Dict[str, Any]):
         log_config = config.get('logging', {})
         log_dir = log_config.get('directory', 'logs')
         log_file = log_config.get('filename', 'degradation_log.log')
-        log_level = log_config.get('level', 'INFO')
+        log_level = log_config.get('level', 'INFO').upper()
         
         os.makedirs(log_dir, exist_ok=True)
         
@@ -21,23 +24,35 @@ class DegradationLogger:
         self.logger.handlers = []
         
         # Simplified timestamp format
-        timestamp = datetime.now().strftime('%H%M')
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M')
         log_path = os.path.join(log_dir, f"{timestamp}_{log_file}")
         
+        # Create handlers with appropriate levels
         file_handler = logging.FileHandler(log_path)
         file_handler.setLevel(getattr(logging, log_level))
         console_handler = logging.StreamHandler()
         console_handler.setLevel(getattr(logging, log_level))
         
-        # Update formatters for desired output
-        file_formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M')
-        console_formatter = logging.Formatter('%(message)s')
+        # Use more detailed format for DEBUG level
+        if log_level == 'DEBUG':
+            file_formatter = logging.Formatter(
+                '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S'
+            )
+            console_formatter = logging.Formatter('%(levelname)s - %(message)s')
+        else:
+            file_formatter = logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M')
+            console_formatter = logging.Formatter('%(message)s')
+        
         
         file_handler.setFormatter(file_formatter)
         console_handler.setFormatter(console_formatter)
         
         self.logger.addHandler(file_handler)
         self.logger.addHandler(console_handler)
+        
+        if log_level == 'DEBUG':
+            self.logger.debug("Initialized DegradationLogger with DEBUG level")
     
     def log_chunk_start(self, chunk_path: str) -> None:
         """Log the start of chunk processing"""
@@ -66,14 +81,15 @@ class DegradationLogger:
 
 
 
+
     def log_degradation_applied(self, 
                             degradation_name: str,
                             was_applied: bool,
                             probability: float,
                             params: Dict[str, Any] = None) -> None:
         """Log information about a degradation application"""
-        if not was_applied:
-            return  # Don't log skipped degradations
+        if not was_applied and self.logger.level != logging.DEBUG:
+            return  # Only log skipped degradations in DEBUG mode
             
         # Add probability to params
         if params is None:
@@ -84,17 +100,24 @@ class DegradationLogger:
         status = "[+]" if was_applied else "[-]"
         param_str = self._format_params(params)
         message = f"  {status} {degradation_name.title()} {param_str}"
-        self.logger.info(message)
         
-        # Detailed JSON log to file only
-        if params:
-            self.logger.debug(json.dumps({
+        if self.logger.level <= logging.DEBUG:
+            # In DEBUG mode, log everything with extra details
+            debug_info = {
                 "degradation": degradation_name,
                 "applied": was_applied,
                 "probability": probability,
-                "params": params
-            }))
-
+                "params": params,
+                "timestamp": datetime.now().isoformat()
+            }
+            # Log the message and debug info separately
+            self.logger.debug(message)
+            self.logger.debug(f"Debug details: {json.dumps(debug_info, indent=2)}")
+        else:
+            # In normal mode, only log applied degradations
+            if was_applied:
+                self.logger.info(message)
+                
     def log_chunk_complete(self, chunk_path: str) -> None:
         """Log the completion of chunk processing"""
         self.logger.info(f"Complete: {os.path.basename(chunk_path)}\n")
@@ -102,9 +125,7 @@ class DegradationLogger:
 def setup_global_logging(config: Dict[str, Any]) -> None:
     """Setup global logging configuration"""
     log_config = config.get('logging', {})
-    log_level = log_config.get('level', 'INFO')
-    console_format = log_config.get('console_format', '%(message)s')
-    file_format = log_config.get('file_format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    log_level = log_config.get('level', 'INFO').upper()
     
     # Reset any existing handlers
     root_logger = logging.getLogger()
@@ -112,6 +133,14 @@ def setup_global_logging(config: Dict[str, Any]) -> None:
     
     # Configure root logger
     root_logger.setLevel(getattr(logging, log_level))
+    
+    # Define formats based on log level
+    if log_level == 'DEBUG':
+        console_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        file_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    else:
+        console_format = log_config.get('console_format', '%(message)s')
+        file_format = log_config.get('file_format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     
     # Console handler
     console_handler = logging.StreamHandler()
@@ -129,3 +158,6 @@ def setup_global_logging(config: Dict[str, Any]) -> None:
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(logging.Formatter(file_format))
         root_logger.addHandler(file_handler)
+        
+        if log_level == 'DEBUG':
+            root_logger.debug("Global logging initialized with DEBUG level")

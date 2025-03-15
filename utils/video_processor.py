@@ -32,10 +32,22 @@ def log_errors(func):
             raise
     return wrapper
 
+def check_ffmpeg_available():
+    """Check if FFmpeg is available on the system"""
+    try:
+        subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
+        return True
+    except (subprocess.SubProcessError, FileNotFoundError):
+        logger.error("FFmpeg is not available on the system. Please install FFmpeg to continue.")
+        return False
+
 class VideoProcessor:
     """Handles video processing operations using FFmpeg."""
     
     def __init__(self, config: Dict[str, Any], codec_handler, scene_detector=None):
+        if not check_ffmpeg_available():
+            raise RuntimeError("FFmpeg is not available on the system")
+            
         self.input_path = config['input_video']
         self.chunks_directory = os.path.join(config.get('chunks_directory', 'chunks'))
         self.hr_directory = os.path.join(self.chunks_directory, 'HR')

@@ -2,7 +2,7 @@ import logging
 import argparse
 from utils.config_loader import load_config
 from utils.codec_handler import CodecHandler
-from utils.video_processor import VideoProcessor
+from utils.video_processor import VideoProcessor, check_ffmpeg_available
 from utils.logging_utils import setup_global_logging
 
 # Set up logging
@@ -28,6 +28,10 @@ def main():
         setup_global_logging(config)
         logger.debug(f"Loading configuration from {args.config}")
         
+        # Check FFmpeg availability
+        if not check_ffmpeg_available():
+            return 1
+
         # Initialize codec handler
         codec_handler = CodecHandler(config['codecs'])
         
