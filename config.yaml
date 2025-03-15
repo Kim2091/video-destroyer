@@ -23,6 +23,7 @@ logging:
   file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Degradation pipeline configuration
+# Rearrange these to change the order they're applied in. Do NOT move "codec" however
 degradations:
   - name: "resize"
     enabled: true
@@ -37,7 +38,7 @@ degradations:
   # This is a basic sharpening filter using unsharp mask, nothing more. Do not try to use it to simulate halos found on DVDs
   - name: "halo"
     enabled: true
-    probability: 0.6
+    probability: 0.4
     params:
       luma_x_range: [3, 5]      # Matrix size for x dimension | Min = 3 Max = 5
       luma_y_range: [3, 5]      # Matrix size for y dimension
@@ -45,23 +46,23 @@ degradations:
 
   - name: "blur"
     enabled: true
-    probability: 1
+    probability: 0.1
     params:
       enabled_types: ["gaussian", "box", "motion"]
       gaussian:
-        sigma_range: [1.0, 5.0]
+        sigma_range: [1.0, 3.0]
         steps_range: [1, 3]
       box:
-        radius_range: [1, 10]
+        radius_range: [1, 3]
         power_range: [1, 2]
       motion:
-        frames_range: [2, 5]
-        angle_range: [0, 360]
+        frames_range: [1, 2]
+        angle_range: [0, 0]
 
-  # This is a very very basic ghosting effect, it needs to be customized by someone who understands ghosting issues on DVDs
+  # This is a very very basic ghosting effect, it needs to be customized by someone who understands ghosting issues on DVDs. Not worth using currently
   - name: "ghosting"
-    enabled: true
-    probability: 1
+    enabled: false
+    probability: 0.1
     params:
       num_ghosts_range: [1, 2]
       opacity_range: [0.05, 0.15]
@@ -70,6 +71,7 @@ degradations:
       offset_y_range: [-2, 2]
       enable_color_shift: true
 
+  # Must remain enabled. For high quality output, just set a modern codec at reasonable settings
   - name: "codec"
     enabled: true
     probability: 1.0
