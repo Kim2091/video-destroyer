@@ -98,7 +98,7 @@ class VideoProcessor:
             '-preset', self.split_preset,
             '-tune', 'lossless',
             '-qp', '0',
-            '-pix_fmt', 'yuv420p',
+            '-pix_fmt', self.video_info['pix_fmt'],
             '-fps_mode', 'cfr'
         ]
         
