@@ -65,7 +65,6 @@ class CodecDegradation(BaseDegradation):
             'h265': {'vcodec': 'libx265', 'crf': quality, 'preset': 'medium'},
             'vp9': {'vcodec': 'libvpx-vp9', 'crf': quality, 'b': 0},
             'av1': {'vcodec': 'libsvtav1', 'crf': quality, 'preset': 7},
-            'mpeg1': {'vcodec': 'mpeg1video', 'qscale': quality},
             'mpeg2': {'vcodec': 'mpeg2video', 'qscale': quality}
         }
         
