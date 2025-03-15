@@ -128,6 +128,20 @@ def load_config(config_path: str) -> Dict[str, Any]:
     if not os.path.exists(config['input_video']):
         raise FileNotFoundError(f"Input video not found: {config['input_video']}")
 
+    # Validate chunk strategy
+    valid_strategies = ["duration", "scene_detection", "frame_count"]
+    if config.get('chunk_strategy') not in valid_strategies:
+        raise ValueError(f"Invalid chunk_strategy. Must be one of: {valid_strategies}")
+
+    # If using existing chunks, validate HR directory exists and contains files
+    if config.get('use_existing_chunks', False):
+        hr_dir = os.path.join(config['chunks_directory'], 'HR')
+        if not os.path.exists(hr_dir):
+            raise FileNotFoundError(f"HR chunks directory not found: {hr_dir}")
+        if not any(f.endswith('.mp4') for f in os.listdir(hr_dir)):
+            raise FileNotFoundError(f"No MP4 files found in HR chunks directory: {hr_dir}")
+        # Force use_existing_chunks to True when strategy is "existing"
+        config['use_existing_chunks'] = True
     
     # Create chunks directory structure
     chunks_dir = config['chunks_directory']
