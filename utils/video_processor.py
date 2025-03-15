@@ -40,8 +40,14 @@ class VideoProcessor:
         self.chunks_directory = os.path.join(config.get('chunks_directory', 'chunks'))
         self.hr_directory = os.path.join(self.chunks_directory, 'HR')
         self.lr_directory = os.path.join(self.chunks_directory, 'LR')
+        
+        # Get chunk settings
         self.chunk_strategy = config.get('chunk_strategy', 'scene_detection')
-        self.chunk_duration = config.get('chunk_duration', 5)
+        self.chunk_duration = config.get('chunk_duration', 10)  # in seconds
+        self.frames_per_chunk = config.get('frames_per_chunk', 300)  # default 300 frames
+        self.min_chunk_duration = config.get('min_chunk_duration', 1.0)  # in seconds
+        
+
         self.min_chunk_duration = config.get('min_chunk_duration', 3)
         self.split_preset = config.get('split_preset', 'slow')
         self.strip_audio = config.get('strip_audio', True)
@@ -207,6 +213,26 @@ class VideoProcessor:
         
         return self._create_chunk_pairs()
 
+    def split_video_by_frames(self) -> List[Tuple[str, str]]:
+        """Split video into chunks with a fixed number of frames per chunk"""
+        logger.info(f"Splitting video by frame count: {self.frames_per_chunk} frames")
+        
+        total_frames = self.video_info.get('nb_frames')
+        if not total_frames:
+            duration = self.video_info.get('duration')
+            if not duration:
+                raise ValueError("Cannot determine video duration")
+            total_frames = int(float(duration) * self.video_info['fps'])
+        
+        chunk_list = []
+        
+        for i, start_frame in enumerate(range(0, total_frames, self.frames_per_chunk), 1):
+            end_frame = min(start_frame + self.frames_per_chunk, total_frames)
+            output_file = self._process_chunk_range(start_frame, end_frame, i)
+            chunk_list.append(output_file)
+        
+        return self._create_chunk_pairs()
+
     def split_video(self) -> List[Tuple[str, str]]:
         """Split video based on configured strategy"""
         # Clean existing files
@@ -218,6 +244,8 @@ class VideoProcessor:
             return self.split_video_by_scenes()
         elif self.chunk_strategy == "duration":
             return self.split_video_by_duration()
+        elif self.chunk_strategy == "frame_count":
+            return self.split_video_by_frames()
         else:
             raise ValueError(f"Unknown chunk strategy: {self.chunk_strategy}")
 

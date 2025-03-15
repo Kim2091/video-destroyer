@@ -3,7 +3,8 @@ input_video: "path/to/video"
 chunks_directory: "chunks"  # Will contain HR and LR subfolders
 
 # Chunk settings
-chunk_strategy: "scene_detection"  # Options: "duration", "scene_detection"
+chunk_strategy: "duration"  # Options: "duration", "scene_detection", "frame_count"
+frames_per_chunk: 5  # Number of frames per chunk (used if chunk_strategy is "frame_count")
 chunk_duration: 5  # Duration in seconds (used if chunk_strategy is "duration")
 min_chunk_duration: 1  # Minimum chunk duration for scene detection
 
