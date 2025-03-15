@@ -1,6 +1,5 @@
 # Use forward slashes or double backslashes for Windows paths
-input_video: "C:/Users/Kim/Downloads/bn/2/hr2.mkv"
-output_directory: "L:/Datasets/output"
+input_video: "path/to/video"
 chunks_directory: "chunks"  # Will contain HR and LR subfolders
 
 # Chunk settings

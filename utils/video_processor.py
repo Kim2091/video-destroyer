@@ -37,7 +37,6 @@ class VideoProcessor:
     
     def __init__(self, config: Dict[str, Any], codec_handler, scene_detector=None):
         self.input_path = config['input_video']
-        self.output_directory = config['output_directory']
         self.chunks_directory = os.path.join(config.get('chunks_directory', 'chunks'))
         self.hr_directory = os.path.join(self.chunks_directory, 'HR')
         self.lr_directory = os.path.join(self.chunks_directory, 'LR')
@@ -66,7 +65,7 @@ class VideoProcessor:
 
     def _setup_directories(self):
         """Create necessary directories"""
-        directories = [self.output_directory, self.hr_directory, self.lr_directory]
+        directories = [self.hr_directory, self.lr_directory]
         for directory in directories:
             os.makedirs(directory, exist_ok=True)
 

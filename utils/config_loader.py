@@ -96,7 +96,6 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Validate required fields
     required_fields = [
         'input_video', 
-        'output_directory', 
         'chunks_directory', 
         'chunk_strategy',
         'degradations'
@@ -128,9 +127,7 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Validate input video exists
     if not os.path.exists(config['input_video']):
         raise FileNotFoundError(f"Input video not found: {config['input_video']}")
-    
-    # Create output directory if it doesn't exist
-    os.makedirs(config['output_directory'], exist_ok=True)
+
     
     # Create chunks directory structure
     chunks_dir = config['chunks_directory']
