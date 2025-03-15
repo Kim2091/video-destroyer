@@ -99,7 +99,8 @@ class VideoProcessor:
             '-tune', 'lossless',
             '-qp', '0',
             '-pix_fmt', self.video_info['pix_fmt'],
-            '-fps_mode', 'cfr'
+            '-fps_mode', 'cfr',
+            '-colorspace', 'bt709'
         ]
         
         if self.strip_audio:
