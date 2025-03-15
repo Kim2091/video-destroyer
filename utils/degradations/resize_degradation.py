@@ -14,12 +14,12 @@ class ResizeDegradation(BaseDegradation):
         self.fixed_scale = self.params.get('fixed_scale', 1.0)
         self.down_up = self.params.get('down_up', {})
         self.scaling_filters = self.params.get('scaling_filters', ['bicubic'])
-        
-        # Store selected parameters for logging
+        # Add selected_params initialization
         self.selected_params = {}
         
     @property
     def name(self) -> str:
+        """Return the name of the degradation"""
         return "resize"
         
     def _select_scaling_filter(self) -> str:
@@ -41,6 +41,10 @@ class ResizeDegradation(BaseDegradation):
     
     def get_params(self) -> Dict[str, Any]:
         """Return the parameters used for this degradation"""
+        # If logger is in DEBUG mode, return all selected parameters
+        if self.logger and self.logger.logger.level <= logging.DEBUG:
+            return self.selected_params
+
         params = {
             'scale': self.fixed_scale,
             'down_filter': self.selected_params['down_filter']
@@ -61,16 +65,15 @@ class ResizeDegradation(BaseDegradation):
         """Direct file processing - not used in pipeline"""
         raise NotImplementedError("Resize degradation only supports piped processing")
     
-    def apply_piped(self, input_stream, video_info=None):
+    def get_filter_expression(self, video_info):
         """
-        Apply resize degradation to video stream using FFmpeg.
+        Generate FFmpeg filter string for resize degradation.
         
         Args:
-            input_stream: FFmpeg input stream
             video_info: Video information from probe
             
         Returns:
-            FFmpeg output stream with resize filters applied
+            String containing FFmpeg filter chain
         """
         if not video_info:
             raise ValueError("Video info required for resize degradation")
@@ -86,8 +89,6 @@ class ResizeDegradation(BaseDegradation):
         
         # Store selected parameters for logging
         self.selected_params = {
-            'fixed_scale': self.fixed_scale,
-            'down_up_enabled': self.down_up.get('enabled', False),
             'down_filter': down_filter,
             'up_filter': up_filter if self.down_up.get('enabled', False) else None,
             'intermediate_scale': intermediate_scale if self.down_up.get('enabled', False) else None
@@ -102,16 +103,13 @@ class ResizeDegradation(BaseDegradation):
             inter_width = int(width * intermediate_scale)
             inter_height = int(height * intermediate_scale)
             
-            # Apply down-up scaling
-            stream = (
-                input_stream
-                .filter('scale', inter_width, inter_height, flags=down_filter)
-                .filter('scale', target_width, target_height, flags=up_filter)
+            # Create filter string for down-up scaling
+            filter_expr = (
+                f"scale={inter_width}:{inter_height}:flags={down_filter},"
+                f"scale={target_width}:{target_height}:flags={up_filter}"
             )
         else:
-            # Apply direct scaling
-            stream = input_stream.filter(
-                'scale', target_width, target_height, flags=down_filter
-            )
+            # Create filter string for direct scaling
+            filter_expr = f"scale={target_width}:{target_height}:flags={down_filter}"
             
-        return stream
+        return filter_expr

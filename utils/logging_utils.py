@@ -43,6 +43,7 @@ class DegradationLogger:
         """Log the start of chunk processing"""
         self.logger.info(f"\nProcessing: {os.path.basename(chunk_path)}")
     
+
     def _format_params(self, params: Dict[str, Any]) -> str:
         """Format parameters for display"""
         if not params:
@@ -97,3 +98,34 @@ class DegradationLogger:
     def log_chunk_complete(self, chunk_path: str) -> None:
         """Log the completion of chunk processing"""
         self.logger.info(f"Complete: {os.path.basename(chunk_path)}\n")
+
+def setup_global_logging(config: Dict[str, Any]) -> None:
+    """Setup global logging configuration"""
+    log_config = config.get('logging', {})
+    log_level = log_config.get('level', 'INFO')
+    console_format = log_config.get('console_format', '%(message)s')
+    file_format = log_config.get('file_format', '%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    
+    # Reset any existing handlers
+    root_logger = logging.getLogger()
+    root_logger.handlers = []
+    
+    # Configure root logger
+    root_logger.setLevel(getattr(logging, log_level))
+    
+    # Console handler
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(logging.Formatter(console_format))
+    root_logger.addHandler(console_handler)
+    
+    # File handler
+    if log_config.get('directory'):
+        os.makedirs(log_config['directory'], exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M')
+        log_file = os.path.join(
+            log_config['directory'], 
+            f"{timestamp}_{log_config.get('filename', 'application.log')}"
+        )
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setFormatter(logging.Formatter(file_format))
+        root_logger.addHandler(file_handler)

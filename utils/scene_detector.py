@@ -34,7 +34,7 @@ class SceneDetector:
         # Content detector parameters
         self.threshold = scene_config.get('threshold', 27.0)
         
-        logger.info(f"Initialized SceneDetector with threshold={self.threshold}")
+        logger.debug(f"Initialized SceneDetector with threshold={self.threshold}")
         
     def get_video_info(self, video_path: str) -> Dict[str, Any]:
         """
@@ -99,7 +99,6 @@ class SceneDetector:
         Returns:
             List of scene boundaries
         """
-        logger.info("Detecting scenes...")
 
         # Open video with the new API
         video = open_video(video_path)

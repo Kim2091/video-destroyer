@@ -3,6 +3,7 @@ import argparse
 from utils.config_loader import load_config
 from utils.codec_handler import CodecHandler
 from utils.video_processor import VideoProcessor
+from utils.logging_utils import setup_global_logging
 
 # Set up logging
 logging.basicConfig(
@@ -21,8 +22,11 @@ def main():
     
     try:
         # Load configuration
-        logger.info(f"Loading configuration from {args.config}")
         config = load_config(args.config)
+        
+        # Setup global logging
+        setup_global_logging(config)
+        logger.debug(f"Loading configuration from {args.config}")
         
         # Initialize codec handler
         codec_handler = CodecHandler(config['codecs'])

@@ -23,17 +23,52 @@ logging:
   file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Degradation pipeline configuration
-# DO NOT REARRANGE ORDER OF DEGRADATIONS
 degradations:
   - name: "resize"
     enabled: true
-    probability: 1.0
+    probability: 1
     params:
       fixed_scale: 0.5
       down_up:
         enabled: true
         range: [0.5, 0.8]  # [min, max] downscale factors
       scaling_filters: ["bilinear", "bicubic", "lanczos", "neighbor", "area"]
+
+  # This is a basic sharpening filter using unsharp mask, nothing more. Do not try to use it to simulate halos found on DVDs
+  - name: "halo"
+    enabled: true
+    probability: 0.6
+    params:
+      luma_x_range: [3, 5]      # Matrix size for x dimension | Min = 3 Max = 5
+      luma_y_range: [3, 5]      # Matrix size for y dimension
+      luma_amount_range: [1.0, 3.0]  # Strength of the effect
+
+  - name: "blur"
+    enabled: true
+    probability: 1
+    params:
+      enabled_types: ["gaussian", "box", "motion"]
+      gaussian:
+        sigma_range: [1.0, 5.0]
+        steps_range: [1, 3]
+      box:
+        radius_range: [1, 10]
+        power_range: [1, 2]
+      motion:
+        frames_range: [2, 5]
+        angle_range: [0, 360]
+
+  # This is a very very basic ghosting effect, it needs to be customized by someone who understands ghosting issues on DVDs
+  - name: "ghosting"
+    enabled: true
+    probability: 1
+    params:
+      num_ghosts_range: [1, 2]
+      opacity_range: [0.05, 0.15]
+      delay_range: [1, 2]
+      offset_x_range: [-3, 3]
+      offset_y_range: [-2, 2]
+      enable_color_shift: true
 
   - name: "codec"
     enabled: true
@@ -43,7 +78,7 @@ degradations:
         probability: 0.5
         quality_range: [18, 28]  # [min, max] CRF values
       h265:
-        probability: 0.1
+        probability: 0.25
         quality_range: [20, 30]
       vp9:
         probability: 0
@@ -51,9 +86,6 @@ degradations:
       av1:
         probability: 0.10
         quality_range: [25, 45]
-      mpeg1:
-        probability: 0.15
-        quality_range: [1, 5]  # qscale: 1-31, lower is better
       mpeg2:
         probability: 0.15
         quality_range: [1, 7]  # qscale: 1-31, lower is better

@@ -10,6 +10,9 @@ from utils.scene_detector import SceneDetector
 from .degradation_pipeline import DegradationPipeline
 from .degradations.codec_degradation import CodecDegradation
 from .degradations.resize_degradation import ResizeDegradation
+from .degradations.halo_degradation import HaloDegradation
+from .degradations.ghosting_degradation import GhostingDegradation
+from .degradations.blur_degradation import BlurDegradation
 from .logging_utils import DegradationLogger
 
 logger = logging.getLogger(__name__)
@@ -75,9 +78,11 @@ class VideoProcessor:
             
             degradation_class = self.get_degradation_class(degradation_config['name'])
             if degradation_class:
-                self.degradation_pipeline.add_degradation(
-                    degradation_class(degradation_config, self.logger)
-                )
+                # Create degradation instance with logger
+                degradation = degradation_class(degradation_config, self.logger)
+                # Add to pipeline
+                self.degradation_pipeline.add_degradation(degradation)
+
 
     def _create_ffmpeg_split_command(self, start_frame, end_frame, output_file):
         """Create FFmpeg command for splitting video"""
@@ -116,7 +121,7 @@ class VideoProcessor:
         output_file = os.path.join(self.hr_directory, f'chunk_{chunk_number:04d}.mp4')
         ffmpeg_cmd = self._create_ffmpeg_split_command(start_frame, end_frame, output_file)
         
-        logger.info(f"Splitting chunk {chunk_number}: {output_file} (frames {start_frame}-{end_frame})")
+        logger.debug(f"Splitting chunk {chunk_number}: {output_file} (frames {start_frame}-{end_frame})")
         subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return output_file
 
@@ -135,7 +140,10 @@ class VideoProcessor:
         """Get the degradation class by name"""
         degradation_classes = {
             'codec': CodecDegradation,
-            'resize': ResizeDegradation
+            'resize': ResizeDegradation,
+            'halo': HaloDegradation,
+            'blur': BlurDegradation,
+            'ghosting': GhostingDegradation
         }
         return degradation_classes.get(name)
 
@@ -217,25 +225,43 @@ class VideoProcessor:
     @log_errors
     def process_chunk(self, hr_chunk_path: str, lr_chunk_path: str) -> str:
         """Process a video chunk with degradations"""
-        self.logger.log_chunk_start(hr_chunk_path)
-        result = self.degradation_pipeline.process_video(hr_chunk_path, lr_chunk_path)
-        self.logger.log_chunk_complete(lr_chunk_path)
-        return result
+        try:
+            # Log the start of chunk processing
+            self.logger.log_chunk_start(hr_chunk_path)
+            
+            # Process the chunk using the pipeline
+            result = self.degradation_pipeline.process_video(hr_chunk_path, lr_chunk_path)
+            
+            # Log successful completion
+            self.logger.log_chunk_complete(lr_chunk_path)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error processing chunk {hr_chunk_path}: {str(e)}")
+            raise
 
     def process_chunks(self, chunk_pairs: List[Tuple[str, str]]) -> List[Tuple[str, str]]:
         """Process all chunks with degradations"""
         logger.info(f"Processing {len(chunk_pairs)} chunks")
         processed_pairs = []
         
-        for i, (hr_path, lr_path) in enumerate(chunk_pairs, 1):
+        for i, (hr_path, lr_path) in enumerate(tqdm(chunk_pairs, desc="Processing chunks"), 1):
             try:
-                if os.path.exists(hr_path):
-                    self.process_chunk(hr_path, lr_path)
-                    processed_pairs.append((hr_path, lr_path))
-                else:
+                if not os.path.exists(hr_path):
                     logger.error(f"HR chunk not found: {hr_path}")
+                    continue
+                    
+                # Process the chunk
+                self.process_chunk(hr_path, lr_path)
+                processed_pairs.append((hr_path, lr_path))
+                
             except Exception as e:
-                logger.error(f"Failed to process chunk {i}: {str(e)}")
+                logger.exception(f"Failed to process chunk {i}")  # This logs the full stack trace
+                continue
+        
+        if not processed_pairs:
+            logger.warning("No chunks were successfully processed!")
         
         return processed_pairs
 
