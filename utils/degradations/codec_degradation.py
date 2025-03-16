@@ -9,23 +9,28 @@ logger = logging.getLogger(__name__)
 class CodecDegradation(BaseDegradation):
     def __init__(self, config: Dict[str, Any], logger=None, codec_handler=None):
         super().__init__(config, logger)
-        # Use provided codec_handler or create new one
-        self.codec_handler = codec_handler or CodecHandler(config['params'])
-        self.selected_params = {}
-        
+        # Use provided codec_handler or create new one from the codec config
+        self.codec_handler = codec_handler or CodecHandler(config.get('params', {}))
+        self.selected_params = None  # Initialize to None instead of empty dict
+
+            
     @property
     def name(self) -> str:
         return "codec"
     
     def get_params(self) -> Dict[str, Any]:
         """Return the parameters used for this degradation"""
+        if not self.selected_params:
+            return None
+            
         # If logger is in DEBUG mode, return all selected parameters
         if self.logger and self.logger.logger.level <= logging.DEBUG:
             return self.selected_params
+            
+        # Otherwise return the standard formatted parameters
         return {
-            "codec": self.selected_params.get("codec"),
-            "quality": self.selected_params.get("quality"),
-            "probability": self.probability
+            "codec": self.selected_params["codec"],
+            "quality": self.selected_params["quality"]
         }
     
     def get_codec_params(self) -> Dict[str, Any]:
@@ -36,13 +41,12 @@ class CodecDegradation(BaseDegradation):
         Returns:
             Dictionary of encoding parameters
         """
-        # Select random codec and quality if not already selected
-        if not self.selected_params:
-            codec, quality = self.codec_handler.get_random_encoding_config()
-            self.selected_params = {
-                "codec": codec,
-                "quality": quality
-            }
+        # Select random codec and quality
+        codec, quality = self.codec_handler.get_random_encoding_config()
+        self.selected_params = {
+            "codec": codec,
+            "quality": quality
+        }
         
         # Common parameters
         common_params = {
@@ -56,14 +60,14 @@ class CodecDegradation(BaseDegradation):
         
         # Codec-specific parameters
         codec_params = {
-            'h264': {'vcodec': 'libx264', 'crf': self.selected_params['quality'], 'preset': 'medium'},
-            'h265': {'vcodec': 'libx265', 'crf': self.selected_params['quality'], 'preset': 'medium'},
-            'vp9': {'vcodec': 'libvpx-vp9', 'crf': self.selected_params['quality'], 'b': 0},
-            'av1': {'vcodec': 'libsvtav1', 'crf': self.selected_params['quality'], 'preset': 7},
-            'mpeg2': {'vcodec': 'mpeg2video', 'qscale': self.selected_params['quality']}
+            'h264': {'vcodec': 'libx264', 'crf': quality, 'preset': 'medium'},
+            'h265': {'vcodec': 'libx265', 'crf': quality, 'preset': 'medium'},
+            'vp9': {'vcodec': 'libvpx-vp9', 'crf': quality, 'b': 0},
+            'av1': {'vcodec': 'libsvtav1', 'crf': quality, 'preset': 7},
+            'mpeg2': {'vcodec': 'mpeg2video', 'qscale': quality}
         }
         
-        return {**common_params, **codec_params[self.selected_params['codec']]}
+        return {**common_params, **codec_params[codec]}
     
     def get_filter_expression(self, video_info):
         """
@@ -79,15 +83,8 @@ class CodecDegradation(BaseDegradation):
         # Get video info
         probe = ffmpeg.probe(input_path)
         video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
-        
-        # Select random codec and quality
-        codec, quality = self.codec_handler.get_random_encoding_config()
-        self.selected_params = {
-            "codec": codec,
-            "quality": quality
-        }
-        
-        # Get encoding parameters
+
+        # Get encoding parameters (this will handle codec selection internally)
         output_params = self.get_codec_params()
         
         # Update GOP size based on video info if available
