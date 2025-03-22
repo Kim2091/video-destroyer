@@ -69,9 +69,9 @@ class DegradationLogger:
             
         # For resize degradation
         if 'down_filter' in params:
-            if params.get('down_up') == 'enabled':
-                return f"({params['scale']}x, {params['down_filter']}->{params['up_filter']}, mid={params['intermediate_scale']:.2f}{prob_str})"
-            return f"({params['scale']}x, {params['down_filter']}{prob_str})"
+            if params.get('up_filter'):  # Check if up_filter exists (indicates down-up scaling)
+                return f"({params.get('fixed_scale', 1.0)}x, {params['down_filter']}->{params['up_filter']}, mid={params.get('intermediate_scale', 1.0):.2f}{prob_str})"
+            return f"({params.get('fixed_scale', 1.0)}x, {params['down_filter']}{prob_str})"
             
         # For codec degradation
         if 'codec' in params:
