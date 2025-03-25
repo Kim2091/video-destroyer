@@ -21,7 +21,7 @@ class DegradationPipeline:
             self.codec_degradation = degradation
         else:
             self.degradations.append(degradation)
-    
+
     def process_video(self, input_path: str, output_path: str) -> str:
         """
         Apply all degradations in sequence to the input video using direct piping.
@@ -37,26 +37,32 @@ class DegradationPipeline:
         probe = ffmpeg.probe(input_path)
         video_stream = next((stream for stream in probe['streams'] if stream['codec_type'] == 'video'), None)
         
-        # Start with the input file
-        stream = ffmpeg.input(input_path)
-        
         # Track which degradations will be applied (based on probability)
         applied_degradations = []
         skipped_degradations = []
+        filter_expressions = []
         
         # Check which non-codec degradations should be applied
         for i, degradation in enumerate(self.degradations):
             if degradation.should_apply():
                 applied_degradations.append((i, degradation))
+                # Get the filter expression and add it if not None
+                filter_expr = degradation.get_filter_expression(video_stream)
+                if filter_expr:
+                    filter_expressions.append(filter_expr)
+                    
+                    # Log the application
+                    if degradation.logger:
+                        degradation.logger.log_degradation_applied(
+                            degradation_name=degradation.name,
+                            was_applied=True,
+                            probability=degradation.probability,
+                            params=degradation.get_params()
+                        )
             else:
                 skipped_degradations.append((i, degradation))
         
-        # Check if codec degradation should be applied
-        codec_applied = False
-        if self.codec_degradation and self.codec_degradation.should_apply():
-            codec_applied = True
-        
-        # Log which degradations will be skipped
+        # Log skipped degradations
         for i, degradation in skipped_degradations:
             if degradation.logger:
                 degradation.logger.log_degradation_applied(
@@ -65,32 +71,30 @@ class DegradationPipeline:
                     probability=degradation.probability,
                     params=None
                 )
-            logger.info(f"Skipped degradation {i+1}/{len(self.degradations)}: {degradation.name}")
         
-        # Apply each selected degradation in sequence
-        for i, degradation in applied_degradations:
-            # Apply the degradation directly to the stream
-            stream = degradation.apply_piped(stream, video_stream)
-            
-            # Log the application
-            if degradation.logger:
-                degradation.logger.log_degradation_applied(
-                    degradation_name=degradation.name,
-                    was_applied=True,
-                    probability=degradation.probability,
-                    params=degradation.get_params()
-                )
-            logger.debug(f"Applied degradation {i+1}/{len(self.degradations)}: {degradation.name}")
+        # Start building the ffmpeg command
+        input_stream = ffmpeg.input(input_path)
         
-        # Apply codec degradation last if it should be applied (FIXED INDENTATION)
-        if codec_applied:
-            # Apply the codec degradation - it returns the stream and codec params
-            stream, codec_params = self.codec_degradation.apply_piped(stream, video_stream)
+        # Apply all filter expressions in one complex filter if we have any
+        if filter_expressions:
+            # Join all filter expressions with commas
+            complex_filter = ','.join(filter_expressions)
+            logger.debug(f"Applied filter chain: {complex_filter}")
             
-            # Create the final output with the codec parameters
-            stream = ffmpeg.output(stream, output_path, **codec_params)
+            # Use the complex_filter parameter in the output directly
+            # instead of calling filter_complex() on the stream
+            output_args = {'filter_complex': complex_filter}
+        else:
+            output_args = {}
+        
+        # Handle codec degradation separately since it's applied at output
+        if self.codec_degradation and self.codec_degradation.should_apply():
+            # Get codec parameters
+            codec_params = self.codec_degradation.get_codec_params()
             
-            # Log the application
+            # Merge codec parameters with filter parameters
+            output_args.update(codec_params)
+            
             if self.codec_degradation.logger:
                 self.codec_degradation.logger.log_degradation_applied(
                     degradation_name=self.codec_degradation.name,
@@ -98,9 +102,7 @@ class DegradationPipeline:
                     probability=self.codec_degradation.probability,
                     params=self.codec_degradation.get_params()
                 )
-            logger.debug(f"Applied final codec degradation: {self.codec_degradation.name}")
         elif self.codec_degradation:
-            # Log that codec was skipped
             if self.codec_degradation.logger:
                 self.codec_degradation.logger.log_degradation_applied(
                     degradation_name=self.codec_degradation.name,
@@ -108,11 +110,18 @@ class DegradationPipeline:
                     probability=self.codec_degradation.probability,
                     params=None
                 )
-            logger.debug(f"Skipped final codec degradation: {self.codec_degradation.name}")
-            # If no codec degradation, we still need to output the stream
-            stream = ffmpeg.output(stream, output_path)
-
-        # Run the pipeline with visible output
-        stream.run(overwrite_output=True)
+        
+        # Create the final output with all parameters
+        stream = ffmpeg.output(input_stream, output_path, **output_args)
+        
+        # Run the pipeline with detailed error logging
+        try:
+            stream.overwrite_output().run(capture_stdout=True, capture_stderr=True)
+        except ffmpeg.Error as e:
+            # Log the detailed error message
+            stderr = e.stderr.decode('utf8')
+            logger.error(f"FFmpeg error processing {input_path}:")
+            logger.error(stderr)
+            raise RuntimeError(f"FFmpeg error: {stderr}")
         
         return output_path

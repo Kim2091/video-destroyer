@@ -169,9 +169,10 @@ class FrameSequenceExtractor:
                     logger.warning(f"Frame {frame_num} not found in temp directories")
                     return False
                 
-                # Destination paths
-                hr_dst_path = os.path.join(self.hr_frames_dir, f"show{sequence_id}_Frame{i+1:04d}.png")
-                lr_dst_path = os.path.join(self.lr_frames_dir, f"show{sequence_id}_Frame{i+1:04d}.png")
+                # Destination paths with updated naming format (5 digits for show, 5 digits for frame)
+                hr_dst_path = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame{i+1:05d}.png")
+                lr_dst_path = os.path.join(self.lr_frames_dir, f"show{sequence_id:05d}_Frame{i+1:05d}.png")
+                
                 
                 # Copy frames
                 import shutil
