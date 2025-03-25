@@ -33,6 +33,7 @@ pip install -r requirements.txt
 3. **Edit ```config.yaml``` and configure it as you wish**
     - Specify the path to the video
     - Customize video degradations
+    - NOTE: Only resizing and compression are enabled by default
 
 4. Run the video processor:
 ```bash
