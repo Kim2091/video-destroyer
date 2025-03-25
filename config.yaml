@@ -4,8 +4,8 @@ chunks_directory: "chunks"  # Will contain HR and LR subfolders
 use_existing_chunks: false  # When true, skips video splitting and processes existing HR chunks
 
 # Chunk settings
-chunk_strategy: "duration"  # Options: "duration", "scene_detection", "frame_count"
-frames_per_chunk: 5  # Number of frames per chunk (used if chunk_strategy is "frame_count")
+chunk_strategy: "scene_detection"  # Options: "duration", "scene_detection", "frame_count"
+frames_per_chunk: 10  # Number of frames per chunk (used if chunk_strategy is "frame_count")
 chunk_duration: 5  # Duration in seconds (used if chunk_strategy is "duration")
 min_chunk_duration: 1  # Minimum chunk duration for scene detection
 
@@ -19,7 +19,7 @@ scene_detection:
 logging:
   directory: "logs"
   filename: "degradation.log"
-  level: "DEBUG"
+  level: "INFO" # Change to "DEBUG" for detailed logging. Good for debugging
   console_format: "%(message)s"
   file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
@@ -38,7 +38,7 @@ degradations:
 
   # This is a basic sharpening filter using unsharp mask, nothing more. Do not try to use it to simulate halos found on DVDs
   - name: "halo"
-    enabled: true
+    enabled: false
     probability: 0.4
     params:
       luma_x_range: [3, 5]      # Matrix size for x dimension | Min = 3 Max = 5
@@ -46,7 +46,7 @@ degradations:
       luma_amount_range: [1.0, 3.0]  # Strength of the effect
 
   - name: "blur"
-    enabled: true
+    enabled: false
     probability: 0.1
     params:
       enabled_types: ["gaussian", "box"] # ["gaussian", "box", "motion"]
@@ -74,8 +74,8 @@ degradations:
 
   # Must remain enabled. For high quality output, just set a modern codec at reasonable settings
   - name: "codec"
-    enabled: true
-    probability: 1.0
+    enabled: true # CANNOT DISABLE
+    probability: 1.0 # CANNOT DISABLE
     params:
       h264:
         probability: 0.5
