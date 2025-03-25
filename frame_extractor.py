@@ -327,8 +327,8 @@ def main():
                         help='Directory containing HR and LR chunks')
     parser.add_argument('-o', '--output_dir', type=str, default='frames',
                         help='Directory to save extracted frames')
-    parser.add_argument('-s', '--sequence_length', type=int, default=5,
-                        help='Number of frames in each sequence')
+    parser.add_argument('-s', '--sequence_length', type=int, default=10,
+                        help='Number of frames in each sequence. Minimum of 5 for TSCUNet. 10-30 is good.')
     parser.add_argument('-d', '--use_scene_detection', action='store_true',
                         help='NOTE: Unnecessary if using scene detect in main.py || Use scene detection to determine sequence start points')
     parser.add_argument('-m', '--max_sequences', type=int, default=None,
