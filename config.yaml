@@ -14,6 +14,7 @@ scene_detection:
   threshold: 30  # Threshold for content detector
   split_preset: "slow"  # FFmpeg preset for splitting (fast, medium, slow)
   strip_audio: true  # Whether to remove audio from output chunks
+  downscale_factor: 2 # Downscale input video for scene detection speedup. Does not apply to saved HR chunks
   max_scenes: 50 # Maximum number of scenes to return (0 = no limit)
   # HR resize settings for initial chunk splitting
   # This resizes the original HR chunks (before degradation pipeline).
@@ -22,7 +23,7 @@ scene_detection:
     enabled: false  # Set to true to resize HR chunks during creation
     scale: 0.5  # Scale factor (1.0 = original size, 0.5 = half size)
     filter: "bicubic"  # Scaling filter to use: bilinear, bicubic, lanczos
-
+    
 # Logging configuration
 logging:
   directory: "logs"
