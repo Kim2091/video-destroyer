@@ -1,8 +1,9 @@
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Callable, Optional
 import yaml
 import ffmpeg
-from scenedetect import SceneManager, open_video, ContentDetector
+from scenedetect import SceneManager, open_video, ContentDetector, FrameTimecode
+import numpy
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -33,8 +34,12 @@ class SceneDetector:
         
         # Content detector parameters
         self.threshold = scene_config.get('threshold', 27.0)
+        # Downscale factor for faster processing (0 = auto, 1 = disabled)
+        self.downscale_factor = scene_config.get('downscale_factor', 0)
+        # Maximum number of scenes to return (0 = no limit)
+        self.max_scenes = scene_config.get('max_scenes', 0)
         
-        logger.debug(f"Initialized SceneDetector with threshold={self.threshold}")
+        logger.debug(f"Initialized SceneDetector with threshold={self.threshold}, downscale_factor={self.downscale_factor}, max_scenes={self.max_scenes}")
         
     def get_video_info(self, video_path: str) -> Dict[str, Any]:
         """
@@ -61,7 +66,14 @@ class SceneDetector:
             if len(fps_parts) == 2 and int(fps_parts[1]) != 0:
                 fps = float(int(fps_parts[0]) / int(fps_parts[1]))
             else:
-                fps = float(video_stream.get('avg_frame_rate', '30/1').split('/')[0])
+                # Fallback for variable frame rate or other formats
+                avg_fps_str = video_stream.get('avg_frame_rate', '30/1')
+                avg_fps_parts = avg_fps_str.split('/')
+                if len(avg_fps_parts) == 2 and int(avg_fps_parts[1]) != 0:
+                     fps = float(int(avg_fps_parts[0]) / int(avg_fps_parts[1]))
+                else:
+                     fps = 30.0 # Default if parsing fails
+                     logger.warning(f"Could not parse FPS string: {avg_fps_str}. Using default 30.0")
             
             # Get resolution
             width = int(video_stream['width'])
@@ -79,7 +91,7 @@ class SceneDetector:
             }
         
         except Exception as e:
-            logger.error(f"Error getting video info: {str(e)}")
+            logger.error(f"Error getting video info for {video_path}: {str(e)}")
             # Return default values if probe fails
             return {
                 'duration': 0,
@@ -97,27 +109,68 @@ class SceneDetector:
             video_path: Path to the video
             
         Returns:
-            List of scene boundaries
+            List of scene boundaries [(start_timecode, end_timecode)]
         """
+        try:
+            # Open video with the new API
+            video = open_video(video_path)
 
-        # Open video with the new API
-        video = open_video(video_path)
+            # Create scene manager
+            scene_manager = SceneManager()
+            # Set the downscale factor on the SceneManager instance
+            # Explicitly disable auto_downscale to ensure manual factor is used
+            scene_manager.auto_downscale = False
+            scene_manager.downscale = self.downscale_factor 
+            # Add the detector
+            scene_manager.add_detector(ContentDetector(threshold=self.threshold))
 
-        # Create scene manager and add detector
-        scene_manager = SceneManager()
-        scene_manager.add_detector(ContentDetector(threshold=self.threshold))
+            # --- Callback logic to stop detection early --- 
+            detection_stopped_early = False
+            detected_scene_count = 0  # Counter for detected scenes
+            def scene_limit_callback(frame_img: numpy.ndarray, frame_num: int):
+                nonlocal detection_stopped_early, detected_scene_count
+                detected_scene_count += 1 # Increment counter on each detected scene event
+                # Check if counter reached the limit
+                if detected_scene_count >= self.max_scenes:
+                    if not detection_stopped_early: # Prevent multiple stop calls/logs
+                        logger.info(f"Scene limit ({self.max_scenes}) reached via callback count. Stopping detection early.")
+                        scene_manager.stop()
+                        detection_stopped_early = True
+            # --- End callback logic ---
 
-        # Detect scenes
-        scene_manager.detect_scenes(video)
+            effective_callback: Optional[Callable[[numpy.ndarray, int], None]] = None
+            if self.max_scenes > 0:
+                effective_callback = scene_limit_callback
+            
+            # A factor of 2 or higher downscales by that amount (e.g., 2 means 1/2 width & height).
+            log_limit = f"limit: {self.max_scenes}" if self.max_scenes > 0 else "no limit"
+            logger.info(f"Starting scene detection for {video_path} (downscale: {self.downscale_factor}, {log_limit})...")
+            # Detect scenes, passing the callback if a limit is set
+            # Disable progress bar if using the limit callback, as it might cause errors on stop()
+            progress = False if self.max_scenes > 0 else True
+            scene_manager.detect_scenes(
+                video,
+                callback=effective_callback,
+                show_progress=progress
+            )
 
-        # Get list of scenes
-        scene_list = scene_manager.get_scene_list()  # Add this line
-        logger.info(f"Detected {len(scene_list)} scenes")
+            # Get the final list (might be shorter if stopped early)
+            scene_list = scene_manager.get_scene_list()
+            
+            if detection_stopped_early:
+                 logger.info(f"Detection stopped early. Found {len(scene_list)} scenes.")
+            else:
+                 logger.info(f"Detection completed. Found {len(scene_list)} scenes.")
 
-        # Print scene information with simpler format
-        for i, scene in enumerate(scene_list):
-            start_frame = scene[0].get_frames()
-            end_frame = scene[1].get_frames()
-            logger.debug(f"Scene {i}: frames {start_frame} to {end_frame} (length: {end_frame - start_frame})")
+            # Debug log scene information (after potential truncation)
+            if logger.level <= logging.DEBUG:
+                for i, scene in enumerate(scene_list):
+                    start_frame = scene[0].get_frames()
+                    end_frame = scene[1].get_frames()
+                    logger.debug(f"Scene {i+1}: frames {start_frame} to {end_frame} (length: {end_frame - start_frame})")
 
-        return scene_list
+            return scene_list
+
+        except Exception as e:
+            logger.error(f"Error during scene detection for {video_path}: {str(e)}")
+            raise # Re-raise the exception after logging
