@@ -63,9 +63,18 @@ class VideoProcessor:
         self.frames_per_chunk = config.get('frames_per_chunk', 300)
         self.min_chunk_duration = config.get('min_chunk_duration', 1.0)
         
+        # Scene detection settings
+        scene_config = config.get('scene_detection', {})
+        self.split_preset = scene_config.get('split_preset', 'slow')
+        self.strip_audio = scene_config.get('strip_audio', True)
+        
+        # HR resize settings
+        self.hr_resize = scene_config.get('hr_resize', {})
+        self.hr_resize_enabled = self.hr_resize.get('enabled', False)
+        self.hr_resize_scale = self.hr_resize.get('scale', 1.0)
+        self.hr_resize_filter = self.hr_resize.get('filter', 'bicubic')
+        
         # Processing settings
-        self.split_preset = config.get('split_preset', 'slow')
-        self.strip_audio = config.get('strip_audio', True)
         self.use_existing_chunks = config.get('use_existing_chunks', False)
         
         # Initialize components
@@ -106,7 +115,22 @@ class VideoProcessor:
 
 
     def _create_ffmpeg_split_command(self, start_frame, end_frame, output_file):
-        """Create FFmpeg command for splitting video"""
+        """
+        Create FFmpeg command for splitting video into HR chunks.
+        
+        This method constructs an FFmpeg command to extract segments from the 
+        input video. If hr_resize is enabled in the configuration, it will also
+        resize the HR chunks during creation using the specified scale factor
+        and filter.
+        
+        Args:
+            start_frame: Starting frame number
+            end_frame: Ending frame number
+            output_file: Path to save the output chunk
+            
+        Returns:
+            List containing the FFmpeg command
+        """
         start_time = start_frame / self.video_info['fps']
         duration = (end_frame - start_frame) / self.video_info['fps']
         seek_offset = max(0, start_time - 2)
@@ -128,6 +152,18 @@ class VideoProcessor:
             '-fps_mode', 'cfr',
             '-colorspace', 'bt709'
         ]
+        
+        # Apply HR resize if enabled
+        if self.hr_resize_enabled:
+            # Calculate new dimensions based on scale factor
+            width = int(self.video_info['width'] * self.hr_resize_scale)
+            height = int(self.video_info['height'] * self.hr_resize_scale)
+            
+            # Add scale filter
+            ffmpeg_cmd.extend([
+                '-vf', f'scale={width}:{height}:flags={self.hr_resize_filter}'
+            ])
+            logger.info(f"Resizing HR chunks to {width}x{height} using {self.hr_resize_filter} filter")
         
         if self.strip_audio:
             ffmpeg_cmd.extend(['-an', '-map', '0:v:0'])
@@ -334,6 +370,12 @@ class VideoProcessor:
     def process_video(self) -> List[Tuple[str, str]]:
         """Process video end-to-end"""
         logger.info(f"Processing video: {self.input_path}")
+        
+        # Log HR resize status if enabled
+        if self.hr_resize_enabled:
+            width = int(self.video_info['width'] * self.hr_resize_scale)
+            height = int(self.video_info['height'] * self.hr_resize_scale)
+            logger.info(f"HR resize enabled: {self.video_info['width']}x{self.video_info['height']} to {width}x{height} ({self.hr_resize_filter})")
         
         if self.use_existing_chunks:
             return self.process_existing_chunks()

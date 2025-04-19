@@ -75,7 +75,7 @@ class DegradationLogger:
             
         # For codec degradation
         if 'codec' in params:
-            return f"({params['codec']}, q={params['quality']}{prob_str})"
+            return f"({params['codec']},q={params['quality']}{prob_str})"
             
         return f"({' '.join(f'{k}={v}' for k, v in params.items() if k not in ['codec_probabilities', 'probability'])}{prob_str})"
 
