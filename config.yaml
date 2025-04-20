@@ -101,3 +101,16 @@ degradations:
       mpeg2:
         probability: 0.15
         quality_range: [2000, 8000]  # bitrate in kbps (2-8 Mbps)
+
+# Frame extraction settings
+frame_extraction:
+  output_directory: "frames"  # Directory to save extracted frames
+  sequence_length: 30  # Number of frames in each sequence
+  use_scene_detection: false  # Use scene detection to determine sequence start points
+  max_sequences_per_chunk: 5  # Max sequences to extract per chunk (null for unlimited)
+  time_gap: 3.0  # Time in seconds to skip between sequences
+  frame_skip: 0  # Alternative to time_gap: specific number of frames to skip
+  skip_existing: true  # Skip extraction if sequence already exists
+  frame_format: "png"  # Image format for extracted frames (png, jpg, jpeg)
+  extract_full_chunks: false  # Extract all possible sequences without overlap
+  verbose_logging: false  # Enable more detailed progress logs
