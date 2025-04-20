@@ -59,7 +59,9 @@ python main.py --config config.yaml
 ```
 
 ### Frame Extraction (frame_extractor.py)
-The second step extracts frame sequences from the video chunks:
+The second step extracts frame sequences from the video chunks.
+
+To use, you can either edit the configuration in config.yaml for frame extraction, or use the arguments below.
 
 Arguments:
 ```bash
