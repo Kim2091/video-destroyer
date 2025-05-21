@@ -1,7 +1,7 @@
 # Use forward slashes or double backslashes for Windows paths
-input_video: "path/to/video"
+input_video: "C:/Users/Kim/Downloads/05 - All That Glitters.mkv"
 chunks_directory: "chunks"  # Will contain HR and LR subfolders
-use_existing_chunks: false  # When true, skips video splitting and processes existing HR chunks
+use_existing_chunks: true  # When true, skips video splitting and processes existing HR chunks
 
 # Chunk settings
 chunk_strategy: "scene_detection"  # Options: "duration", "scene_detection", "frame_count"
@@ -28,7 +28,7 @@ scene_detection:
 logging:
   directory: "logs"
   filename: "degradation.log"
-  level: "INFO" # Change to "DEBUG" for detailed logging. Good for debugging
+  level: "DEBUG" # Change to "DEBUG" for detailed logging. Good for debugging
   console_format: "%(message)s"
   file_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
@@ -36,7 +36,7 @@ logging:
 # Rearrange these to change the order they're applied in. Do NOT move "codec" however
 degradations:
   - name: "resize"
-    enabled: true
+    enabled: false
     probability: 1
     params:
       fixed_scale: 0.5
@@ -107,25 +107,35 @@ degradations:
     params:
       delay_frames: 1 # Number of frames to delay U and V chroma planes
 
+  # Applies telecine, progressive chroma sampling, MPEG-2 compression, and TFM/TDecimate processing
+  - name: "interlace_progressive_chroma"
+    enabled: true
+    probability: 1
+    params:
+      qscale: 1  # MPEG-2 quantization scale (1-31, lower is better quality)
+      gop_size: 15  # GOP size for MPEG-2 compression
+      telecine_pattern: 23  # Standard 2:3 pulldown pattern
+      field_order: "top"  # Field order for interlacing
+
   # Must remain enabled. For high quality output, just set a modern codec at reasonable settings
   - name: "codec"
     enabled: true # CANNOT DISABLE
     probability: 1.0 # CANNOT DISABLE
     params:
       h264:
-        probability: 0.5
-        quality_range: [18, 28]  # [min, max] CRF values
+        probability: 1
+        quality_range: [12, 12]  # [min, max] CRF values
       h265:
-        probability: 0.25
+        probability: 0
         quality_range: [20, 30]
       vp9:
         probability: 0
         quality_range: [18, 28]
       av1:
-        probability: 0.10
+        probability: 0
         quality_range: [25, 45]
       mpeg2:
-        probability: 0.15
+        probability: 0
         quality_range: [2000, 8000]  # bitrate in kbps (2-8 Mbps)
 
 # Frame extraction settings

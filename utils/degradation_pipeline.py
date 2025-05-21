@@ -87,7 +87,17 @@ class DegradationPipeline:
         else:
             output_args = {}
         
+        # Check for codec parameters in applied degradations
+        # This allows degradations like InterlaceProgressiveChromaDegradation to specify codec settings
+        for i, degradation in applied_degradations:
+            if hasattr(degradation, 'get_codec_params') and callable(getattr(degradation, 'get_codec_params')):
+                codec_params = degradation.get_codec_params()
+                if codec_params:
+                    logger.debug(f"Using codec parameters from {degradation.name}: {codec_params}")
+                    output_args.update(codec_params)
+        
         # Handle codec degradation separately since it's applied at output
+        # This will override any codec parameters from other degradations if enabled
         if self.codec_degradation and self.codec_degradation.should_apply():
             # Get codec parameters
             codec_params = self.codec_degradation.get_codec_params()

@@ -7,6 +7,7 @@ from .blur_degradation import BlurDegradation
 from .noise_degradation import NoiseDegradation
 from .interlace_degradation import InterlaceDegradation
 from .chroma_delay_degradation import ChromaDelayDegradation
+from .interlace_progressive_chroma_degradation import InterlaceProgressiveChromaDegradation
 
 __all__ = [
     'BaseDegradation',
@@ -17,5 +18,6 @@ __all__ = [
     'BlurDegradation',
     'NoiseDegradation',
     'InterlaceDegradation',
-    'ChromaDelayDegradation'
+    'ChromaDelayDegradation',
+    'InterlaceProgressiveChromaDegradation'
 ]

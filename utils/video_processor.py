@@ -16,6 +16,7 @@ from .degradations.blur_degradation import BlurDegradation
 from .degradations.noise_degradation import NoiseDegradation
 from .degradations.interlace_degradation import InterlaceDegradation
 from .degradations.chroma_delay_degradation import ChromaDelayDegradation
+from .degradations.interlace_progressive_chroma_degradation import InterlaceProgressiveChromaDegradation
 from .logging_utils import DegradationLogger
 
 logger = logging.getLogger(__name__)
@@ -206,7 +207,8 @@ class VideoProcessor:
             'ghosting': GhostingDegradation,
             'noise': NoiseDegradation,
             'interlace': InterlaceDegradation,
-            'chroma_delay': ChromaDelayDegradation
+            'chroma_delay': ChromaDelayDegradation,
+            'interlace_progressive_chroma': InterlaceProgressiveChromaDegradation
         }
         return degradation_classes.get(name)
 
