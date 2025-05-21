@@ -13,6 +13,9 @@ from .degradations.resize_degradation import ResizeDegradation
 from .degradations.halo_degradation import HaloDegradation
 from .degradations.ghosting_degradation import GhostingDegradation
 from .degradations.blur_degradation import BlurDegradation
+from .degradations.noise_degradation import NoiseDegradation
+from .degradations.interlace_degradation import InterlaceDegradation
+from .degradations.chroma_delay_degradation import ChromaDelayDegradation
 from .logging_utils import DegradationLogger
 
 logger = logging.getLogger(__name__)
@@ -200,7 +203,10 @@ class VideoProcessor:
             'resize': ResizeDegradation,
             'halo': HaloDegradation,
             'blur': BlurDegradation,
-            'ghosting': GhostingDegradation
+            'ghosting': GhostingDegradation,
+            'noise': NoiseDegradation,
+            'interlace': InterlaceDegradation,
+            'chroma_delay': ChromaDelayDegradation
         }
         return degradation_classes.get(name)
 

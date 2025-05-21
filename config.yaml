@@ -41,9 +41,17 @@ degradations:
     params:
       fixed_scale: 0.5
       down_up:
-        enabled: true
+        enabled: false
         range: [0.5, 0.8]  # [min, max] downscale factors
       scaling_filters: ["bilinear", "bicubic", "lanczos", "neighbor", "area"]
+
+  - name: "noise"
+    enabled: false
+    probability: 1.0
+    params:
+      y_strength_range: [1, 10]     # Strength range for luminance noise
+      uv_strength_range: [1, 10]    # Strength range for chrominance noise
+      types: ["u", "t","a"]        # u=uniform, t=temporal, a=averaged temporal
 
   # This is a basic sharpening filter using unsharp mask, nothing more. Do not try to use it to simulate halos found on DVDs
   - name: "halo"
@@ -80,6 +88,24 @@ degradations:
       offset_x_range: [-3, 3]
       offset_y_range: [-2, 2]
       enable_color_shift: true
+
+  # This introduces interlacing on your input clip. Adjust the mode for what you need
+  - name: "interlace"
+    enabled: false
+    probability: 1 # Example probability, adjust as needed
+    params:
+      # tinterlace modes: e.g., 0=merge, 1=drop_even, 2=drop_odd, 3=pad, 
+      # 4=interleave_top, 5=interleave_bottom, 6=interlace_vaapi (if avail)
+      # 7=chroma_only (applies interlacing only to U/V planes, keeps Y progressive)
+      # Modes 4 and 5 are good for simulating interlacing from progressive.
+      modes: [4, 5]
+
+  # This is a basic simulation of a "chroma delay". It delays the chroma (U and V) planes by a specified number of frames.
+  - name: "chroma_delay"
+    enabled: false
+    probability: 1
+    params:
+      delay_frames: 1 # Number of frames to delay U and V chroma planes
 
   # Must remain enabled. For high quality output, just set a modern codec at reasonable settings
   - name: "codec"

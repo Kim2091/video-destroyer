@@ -31,12 +31,11 @@ class ResizeDegradation(BaseDegradation):
         if not self.down_up.get('enabled', False):
             return self.fixed_scale
             
-        scale_range = self.down_up.get('range', {})
-        min_scale = scale_range.get('min', 0.15)
-        max_scale = scale_range.get('max', 0.8)
-        
-        # Ensure intermediate scale is not larger than target scale
-        max_scale = min(max_scale, self.fixed_scale)
+        scale_range = self.down_up.get('range', [0.15, 0.8])
+        if not isinstance(scale_range, list) or len(scale_range) != 2:
+            scale_range = [0.15, 0.8]  # Default range if invalid
+            
+        min_scale, max_scale = scale_range
         return random.uniform(min_scale, max_scale)
     
     def get_params(self) -> Dict[str, Any]:
@@ -102,6 +101,10 @@ class ResizeDegradation(BaseDegradation):
             # Calculate intermediate dimensions
             inter_width = int(width * intermediate_scale)
             inter_height = int(height * intermediate_scale)
+            
+            # Calculate target dimensions (using fixed_scale)
+            target_width = int(width * self.fixed_scale)
+            target_height = int(height * self.fixed_scale)
             
             # Create filter string for down-up scaling
             filter_expr = (
