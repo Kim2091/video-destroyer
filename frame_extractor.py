@@ -103,23 +103,26 @@ class FrameSequenceExtractor:
     def get_chunk_pairs(self) -> List[Tuple[str, str]]:
         """
         Get pairs of HR and LR chunks.
-        
+    
         Returns:
             List of tuples (hr_chunk_path, lr_chunk_path)
         """
-        hr_chunks = sorted(glob.glob(os.path.join(self.hr_directory, "*.mp4")))
-        
+        hr_chunks = []
+        for ext in ["*.mkv", "*.mp4"]:
+            hr_chunks.extend(glob.glob(os.path.join(self.hr_directory, ext)))
+        hr_chunks = sorted(hr_chunks)
+    
         chunk_pairs = []
         for hr_chunk in hr_chunks:
             basename = os.path.basename(hr_chunk)
             lr_chunk = os.path.join(self.lr_directory, basename)
-            
+        
             if os.path.exists(lr_chunk):
                 chunk_pairs.append((hr_chunk, lr_chunk))
             else:
                 if self.verbose_logging:
                     logger.warning(f"Missing LR chunk for {basename}")
-        
+    
         return chunk_pairs
         
     def get_video_info(self, video_path: str) -> Dict[str, Any]:

@@ -38,6 +38,14 @@ class ResizeDegradation(BaseDegradation):
         min_scale, max_scale = scale_range
         return random.uniform(min_scale, max_scale)
     
+    def _should_apply_down_up(self) -> bool:
+        """Determine if down-up scaling should be applied based on probability"""
+        if not self.down_up.get('enabled', False):
+            return False
+        
+        down_up_prob = self.down_up.get('probability', 1.0)
+        return random.random() < down_up_prob
+    
     def get_params(self) -> Dict[str, Any]:
         """Return the parameters used for this degradation"""
         # If logger is in DEBUG mode, return all selected parameters
@@ -49,7 +57,7 @@ class ResizeDegradation(BaseDegradation):
             'down_filter': self.selected_params['down_filter']
         }
         
-        if self.down_up.get('enabled', False):
+        if self.selected_params.get('down_up_applied', False):
             params.update({
                 'down_up': 'enabled',
                 'intermediate_scale': round(self.selected_params['intermediate_scale'], 3),
@@ -86,18 +94,22 @@ class ResizeDegradation(BaseDegradation):
         up_filter = self._select_scaling_filter()
         intermediate_scale = self._select_down_up_scale()
         
+        # Determine if down-up should be applied
+        apply_down_up = self._should_apply_down_up()
+        
         # Store selected parameters for logging
         self.selected_params = {
             'down_filter': down_filter,
-            'up_filter': up_filter if self.down_up.get('enabled', False) else None,
-            'intermediate_scale': intermediate_scale if self.down_up.get('enabled', False) else None
+            'up_filter': up_filter if apply_down_up else None,
+            'intermediate_scale': intermediate_scale if apply_down_up else None,
+            'down_up_applied': apply_down_up
         }
         
         # Calculate target dimensions
         target_width = int(width * self.fixed_scale)
         target_height = int(height * self.fixed_scale)
         
-        if self.down_up.get('enabled', False):
+        if apply_down_up:
             # Calculate intermediate dimensions
             inter_width = int(width * intermediate_scale)
             inter_height = int(height * intermediate_scale)

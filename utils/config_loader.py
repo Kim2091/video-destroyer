@@ -45,15 +45,8 @@ def convert_ranges_to_dict(config: Dict[str, Any]) -> Dict[str, Any]:
     for degradation in config.get('degradations', []):
         params = degradation.get('params', {})
         
-        if degradation['name'] == 'resize':
-            if 'down_up' in params and isinstance(params['down_up'].get('range'), list):
-                range_list = params['down_up']['range']
-                params['down_up']['range'] = {
-                    'min': range_list[0],
-                    'max': range_list[1]
-                }
-                
-        elif degradation['name'] == 'codec':
+        # Only convert codec ranges, not resize ranges
+        if degradation['name'] == 'codec':
             for codec in params.values():
                 if isinstance(codec.get('quality_range'), list):
                     range_list = codec['quality_range']
@@ -63,7 +56,6 @@ def convert_ranges_to_dict(config: Dict[str, Any]) -> Dict[str, Any]:
                     }
                     
     return config
-
 
 def load_config(config_path: str) -> Dict[str, Any]:
     """
@@ -140,8 +132,6 @@ def load_config(config_path: str) -> Dict[str, Any]:
             raise FileNotFoundError(f"HR chunks directory not found: {hr_dir}")
         if not any(f.endswith('.mp4') for f in os.listdir(hr_dir)):
             raise FileNotFoundError(f"No MP4 files found in HR chunks directory: {hr_dir}")
-        # Force use_existing_chunks to True when strategy is "existing"
-        config['use_existing_chunks'] = True
     
     # Create chunks directory structure
     chunks_dir = config['chunks_directory']
