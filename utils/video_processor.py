@@ -147,7 +147,10 @@ class VideoProcessor:
             '-i', self.input_path,
             '-ss', str(start_time - seek_offset),
             '-t', str(duration),
-            '-c:v', 'ffv1',
+            '-c:v', 'hevc_nvenc',
+            '-preset', self.split_preset,
+            '-tune', 'lossless',
+            '-qp', '0',
             '-pix_fmt', self.video_info['pix_fmt'],
             '-fps_mode', 'cfr',
             '-colorspace', 'bt709'
