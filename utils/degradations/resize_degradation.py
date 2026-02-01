@@ -46,6 +46,10 @@ class ResizeDegradation(BaseDegradation):
         down_up_prob = self.down_up.get('probability', 1.0)
         return random.random() < down_up_prob
     
+    def _round_to_even(self, value: int) -> int:
+        """Round a value to the nearest even number for codec compatibility"""
+        return (value // 2) * 2
+    
     def get_params(self) -> Dict[str, Any]:
         """Return the parameters used for this degradation"""
         # If logger is in DEBUG mode, return all selected parameters
@@ -105,26 +109,26 @@ class ResizeDegradation(BaseDegradation):
             'down_up_applied': apply_down_up
         }
         
-        # Calculate target dimensions
-        target_width = int(width * self.fixed_scale)
-        target_height = int(height * self.fixed_scale)
+        # Calculate target dimensions and ensure they're even for codec compatibility
+        target_width = self._round_to_even(int(width * self.fixed_scale))
+        target_height = self._round_to_even(int(height * self.fixed_scale))
         
         if apply_down_up:
-            # Calculate intermediate dimensions
-            inter_width = int(width * intermediate_scale)
-            inter_height = int(height * intermediate_scale)
+            # Calculate intermediate dimensions and ensure they're even
+            inter_width = self._round_to_even(int(width * intermediate_scale))
+            inter_height = self._round_to_even(int(height * intermediate_scale))
             
-            # Calculate target dimensions (using fixed_scale)
-            target_width = int(width * self.fixed_scale)
-            target_height = int(height * self.fixed_scale)
+            # Calculate target dimensions (using fixed_scale) - already calculated above
+            target_width = self._round_to_even(int(width * self.fixed_scale))
+            target_height = self._round_to_even(int(height * self.fixed_scale))
             
             # Create filter string for down-up scaling
             filter_expr = (
-                f"scale={inter_width}:{inter_height}:flags={down_filter},"
-                f"scale={target_width}:{target_height}:flags={up_filter}"
+                f"scale={inter_width}:{inter_height}:sws_flags={down_filter},"
+                f"scale={target_width}:{target_height}:sws_flags={up_filter}"
             )
         else:
             # Create filter string for direct scaling
-            filter_expr = f"scale={target_width}:{target_height}:flags={down_filter}"
+            filter_expr = f"scale={target_width}:{target_height}:sws_flags={down_filter}"
             
         return filter_expr

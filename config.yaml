@@ -1,28 +1,43 @@
 # Use forward slashes or double backslashes for Windows paths
-input_video: "path/to/video"
-chunks_directory: "chunks"  # Will contain HR and LR subfolders
+# Input can be either a single video file or a folder containing multiple videos
+# The system will auto-detect which mode to use
+input: "C:/Users/mystery/Pictures/Datasets/video-destroyer/picnic.mkv"
+video_extensions: [".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv"]  # Used when input is a folder
+
+chunks_directory: "chunks"  # Will contain HR and LR subfolders (or per-video subfolders when processing folder)
 use_existing_chunks: false  # When true, skips video splitting and processes existing HR chunks
 
 # Chunk settings
 chunk_strategy: "scene_detection"  # Options: "duration", "scene_detection", "frame_count"
-frames_per_chunk: 10  # Number of frames per chunk (used if chunk_strategy is "frame_count")
-chunk_duration: 5  # Duration in seconds (used if chunk_strategy is "duration")
+frames_per_chunk: 5  # Number of frames per chunk (used if chunk_strategy is "frame_count")
+chunk_duration: 15  # Duration in seconds (used if chunk_strategy is "duration")
 min_chunk_duration: 1  # Minimum chunk duration for scene detection
 
 # Scene detection parameters
 scene_detection:
-  threshold: 30  # Threshold for content detector
+  threshold: 15  # Threshold for content detector
   split_preset: "slow"  # FFmpeg preset for splitting (fast, medium, slow)
   strip_audio: true  # Whether to remove audio from output chunks
-  downscale_factor: 2 # Downscale input video for scene detection speedup. Does not apply to saved HR chunks
-  max_scenes: 50 # Maximum number of scenes to return (0 = no limit)
+  downscale_factor: 12 # Downscale input video for scene detection speedup. Does not apply to saved HR chunks
+  max_scenes: 500 # Maximum number of scenes to return (0 = no limit)
+  
+  # HDR to SDR tonemapping for initial chunk splitting
+  # This applies to HR chunks (before degradation pipeline), ensuring both HR and LR are SDR
+  tonemap:
+    enabled: false  # Set to true to tonemap HDR input to SDR
+    auto_detect: true  # Automatically detect HDR and skip if input is SDR
+    algorithm: "hable"  # Options: hable, mobius, reinhard, bt2390, linear
+    desat: 0.5  # Desaturation parameter [0-1]
+    target_nits: 100  # Target peak luminance in nits for SDR (typically 100-203)
+  
   # HR resize settings for initial chunk splitting
   # This resizes the original HR chunks (before degradation pipeline).
   # Useful for faster processing with large videos while maintaining quality.
   hr_resize:
     enabled: false  # Set to true to resize HR chunks during creation
-    scale: 0.5  # Scale factor (1.0 = original size, 0.5 = half size)
-    filter: "bicubic"  # Scaling filter to use: bilinear, bicubic, lanczos
+    scale: 0.33  # Scale factor (1.0 = original size, 0.5 = half size)
+    # Valid filters: "fast_bilinear", "bilinear", "bicubic", "neighbor", "area", "bicublin", "gauss", "sinc", "lanczos", "spline"
+    filters: ["lanczos"]  # Picks a random filter selected from list
     
 # Logging configuration
 logging:
@@ -42,8 +57,9 @@ degradations:
       fixed_scale: 0.5
       down_up:
         enabled: false
-        range: [0.5, 0.8]  # [min, max] downscale factors
-      scaling_filters: ["bilinear", "bicubic", "lanczos", "neighbor", "area"]
+        probability: 0.5  # 70% chance to apply down-up when resize is active
+        range: [0.75, 1]  # [min, max] downscale factors
+      scaling_filters: ["bicubic", "bilinear", "area"]  # Options: fast_bilinear, bilinear, bicubic, neighbor, area, bicublin, gauss, sinc, lanczos, spline
 
   - name: "noise"
     enabled: false
@@ -56,22 +72,22 @@ degradations:
   # This is a basic sharpening filter using unsharp mask, nothing more. Do not try to use it to simulate halos found on DVDs
   - name: "halo"
     enabled: false
-    probability: 0.4
+    probability: 0.2
     params:
       luma_x_range: [3, 5]      # Matrix size for x dimension | Min = 3 Max = 5
       luma_y_range: [3, 5]      # Matrix size for y dimension
-      luma_amount_range: [1.0, 3.0]  # Strength of the effect
+      luma_amount_range: [0, 0.5]  # Strength of the effect
 
   - name: "blur"
-    enabled: false
-    probability: 0.1
+    enabled: true
+    probability: 0.4
     params:
-      enabled_types: ["gaussian", "box"] # ["gaussian", "box", "motion"]
+      enabled_types: ["gaussian"] # ["gaussian", "box", "motion"]
       gaussian:
-        sigma_range: [1.0, 3.0]
+        sigma_range: [0.7, 2]
         steps_range: [1, 3]
       box:
-        radius_range: [1, 3]
+        radius_range: [0.25, 1]
         power_range: [1, 2]
       motion:
         frames_range: [1, 2]
@@ -89,16 +105,16 @@ degradations:
       offset_y_range: [-2, 2]
       enable_color_shift: true
 
-  # This introduces interlacing on your input clip. Adjust the mode for what you need
+  # This introduces interlacing on your input clip. Adjust the field order for what you need
   - name: "interlace"
     enabled: false
     probability: 1 # Example probability, adjust as needed
     params:
-      # tinterlace modes: e.g., 0=merge, 1=drop_even, 2=drop_odd, 3=pad, 
-      # 4=interleave_top, 5=interleave_bottom, 6=interlace_vaapi (if avail)
-      # 7=chroma_only (applies interlacing only to U/V planes, keeps Y progressive)
-      # Modes 4 and 5 are good for simulating interlacing from progressive.
-      modes: [4, 5]
+      # Field orders: 'top' for top field first, 'bottom' for bottom field first
+      # These map to tinterlace modes: top=mode 4 (interleave_top), bottom=mode 5 (interleave_bottom)
+      # Set chroma_only to true to apply interlacing only to U/V planes (mode 7), keeping Y progressive
+      field_orders: ['top', 'bottom']  # Randomly select from these field orders
+      chroma_only: false  # Set to true for chroma-only interlacing
 
   # This is a basic simulation of a "chroma delay". It delays the chroma (U and V) planes by a specified number of frames.
   - name: "chroma_delay"
@@ -113,30 +129,82 @@ degradations:
     probability: 1.0 # CANNOT DISABLE
     params:
       h264:
-        probability: 0.5
-        quality_range: [18, 28]  # [min, max] CRF values
+        probability: 0.6
+        quality_range: [23, 33]  # [min, max] CRF values
+        presets: ["veryslow"]  # Randomly select from these presets
       h265:
-        probability: 0.25
-        quality_range: [20, 30]
+        probability: 0
+        quality_range: [0, 0]
+        presets: ["medium", "slow", "veryslow"]  # Randomly select from these presets
       vp9:
         probability: 0
-        quality_range: [18, 28]
+        quality_range: [22, 28]
       av1:
-        probability: 0.10
-        quality_range: [25, 45]
+        probability: 0
+        quality_range: [25, 30]
+        preset_range: [2, 8]  # [min, max] preset values (0=slowest, 13=fastest)
       mpeg2:
-        probability: 0.15
-        quality_range: [2000, 8000]  # bitrate in kbps (2-8 Mbps)
+        probability: 0.4
+        quality_range: [6000, 10000]  # bitrate in kbps (2-8 Mbps)
 
 # Frame extraction settings
 frame_extraction:
-  output_directory: "frames"  # Directory to save extracted frames
-  sequence_length: 30  # Number of frames in each sequence
-  use_scene_detection: false  # Use scene detection to determine sequence start points
-  max_sequences_per_chunk: 5  # Max sequences to extract per chunk (null for unlimited)
-  time_gap: 3.0  # Time in seconds to skip between sequences
-  frame_skip: 0  # Alternative to time_gap: specific number of frames to skip
+  auto_extract_frames: true  # Automatically extract frames after video processing completes
+  output_directory: "frames_bf6_bink"  # Directory to save extracted frames
+  sequence_length: 5  # Number of frames in each sequence
+  
+  # Extraction mode (mutually exclusive - only one mode is active at a time):
+  # Priority: use_scene_detection > extract_full_chunks > time_gap/frame_skip
+  use_scene_detection: false  # Use scene detection to determine sequence start points (ignores time_gap/frame_skip/extract_full_chunks)
+  extract_full_chunks: true  # Extract all possible sequences without overlap (ignores time_gap/frame_skip)
+  
+  # Gap settings (only used when both use_scene_detection and extract_full_chunks are false):
+  time_gap: 0  # Time in seconds to skip between sequences (set to 0 to use frame_skip instead)
+  frame_skip: 0  # Alternative to time_gap: specific number of frames to skip (only used if time_gap is null/0)
+  
+  # Other settings:
+  max_sequences_per_chunk: null  # Max sequences to extract per chunk (null for unlimited)
   skip_existing: true  # Skip extraction if sequence already exists
   frame_format: "png"  # Image format for extracted frames (png, jpg, jpeg)
-  extract_full_chunks: false  # Extract all possible sequences without overlap
   verbose_logging: false  # Enable more detailed progress logs
+
+# Post-processing configuration
+# Applied after frame extraction to tile, filter, and clean up extracted frames
+post_processing:
+  enabled: false  # Master toggle for all post-processing steps
+  
+  # Step 1: Tile video frames into smaller patches
+  tiling:
+    enabled: false  # Enable frame tiling
+    tile_width: 512  # Width of each tile in pixels for HR frames
+    tile_height: 512  # Height of each tile in pixels for HR frames
+    # LR tile size is automatically calculated based on fixed_scale from resize degradation
+    # e.g., if fixed_scale: 0.5, LR tiles will be 256x256
+    seed: 1024  # Random seed for reproducible tile selection
+    workers: null  # Number of parallel workers (null = use all CPU cores)
+  
+  # Step 2: Blank frame detection to filter out sequences with low-detail frames
+  blank_detection:
+    enabled: false  # Enable blank/low-detail frame detection on HR tiled frames
+    min_blank_frames: 2  # Minimum number of blank frames to flag a sequence as bad
+    edge_threshold: 5.0  # Minimum edge density percentage (0-100, lower = more strict)
+    variance_threshold: 200.0  # Minimum variance threshold (higher = more detail required)
+    # Sequences with too many blank frames are moved to hr_tiled_bad folder
+  
+  # Step 3: Motion detection to filter out bad frames
+  motion_detection:
+    enabled: true  # Enable motion detection on HR tiled frames
+    min_motion: 1  # Minimum motion threshold percentage (-1 to disable)
+    max_motion: 15.0  # Maximum motion threshold percentage (-1 to disable)
+    threshold: 30  # Pixel difference threshold for motion detection (0-255)
+    # Sequences with motion issues are moved to hr_tiled_bad folder
+  
+  # Step 4: Sequence completeness check
+  sequence_completeness:
+    enabled: false  # Enable checking for incomplete sequences (missing frames)
+    # If a sequence has any missing frames or wrong number of frames, the entire sequence is moved to bad folder
+    # Expected sequence length is taken from frame_extraction.sequence_length
+  
+  # Step 5: Folder synchronization (automatic)
+  # Automatically removes corresponding LR tiled frames when HR frames are moved to bad folder
+  # No configuration needed - runs automatically if any filtering step is enabled

@@ -3,6 +3,9 @@ frames/
 
 # Ignore the 'chunks' folder
 chunks/
+real/
+New folder/
+28 years later_chunks/
 
 # Ignore all __pycache__ folders
 __pycache__/

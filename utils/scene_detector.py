@@ -82,12 +82,20 @@ class SceneDetector:
             # Get pixel format
             pix_fmt = video_stream.get('pix_fmt', 'yuv420p')
             
+            # Get HDR metadata
+            color_transfer = video_stream.get('color_transfer', '')
+            color_space = video_stream.get('color_space', '')
+            color_primaries = video_stream.get('color_primaries', '')
+            
             return {
                 'duration': duration,
                 'fps': fps,
                 'width': width,
                 'height': height,
-                'pix_fmt': pix_fmt
+                'pix_fmt': pix_fmt,
+                'color_transfer': color_transfer,
+                'color_space': color_space,
+                'color_primaries': color_primaries
             }
         
         except Exception as e:
@@ -98,7 +106,10 @@ class SceneDetector:
                 'fps': 30,
                 'width': 1920,
                 'height': 1080,
-                'pix_fmt': 'yuv420p'
+                'pix_fmt': 'yuv420p',
+                'color_transfer': '',
+                'color_space': '',
+                'color_primaries': ''
             }
     
     def detect_scenes(self, video_path: str):

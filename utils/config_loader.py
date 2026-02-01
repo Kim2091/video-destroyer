@@ -1,6 +1,6 @@
 import os
 import yaml
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 
 def validate_degradation_config(degradation: Dict[str, Any]) -> None:
@@ -87,7 +87,6 @@ def load_config(config_path: str) -> Dict[str, Any]:
     
     # Validate required fields
     required_fields = [
-        'input_video', 
         'chunks_directory', 
         'chunk_strategy',
         'degradations'
@@ -115,10 +114,6 @@ def load_config(config_path: str) -> Dict[str, Any]:
     )
     if codec_degradation:
         config['codecs'] = codec_degradation['params']
-    
-    # Validate input video exists
-    if not os.path.exists(config['input_video']):
-        raise FileNotFoundError(f"Input video not found: {config['input_video']}")
 
     # Validate chunk strategy
     valid_strategies = ["duration", "scene_detection", "frame_count"]
@@ -130,9 +125,9 @@ def load_config(config_path: str) -> Dict[str, Any]:
         hr_dir = os.path.join(config['chunks_directory'], 'HR')
         if not os.path.exists(hr_dir):
             raise FileNotFoundError(f"HR chunks directory not found: {hr_dir}")
-        if not any(f.endswith('.mp4') for f in os.listdir(hr_dir)):
-            raise FileNotFoundError(f"No MP4 files found in HR chunks directory: {hr_dir}")
-    
+        if not any(f.endswith(('.mkv', '.mp4')) for f in os.listdir(hr_dir)):
+            raise FileNotFoundError(f"No MKV or MP4 files found in HR chunks directory: {hr_dir}")
+                
     # Create chunks directory structure
     chunks_dir = config['chunks_directory']
     hr_dir = os.path.join(chunks_dir, 'HR')

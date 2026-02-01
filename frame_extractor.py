@@ -178,12 +178,18 @@ class FrameSequenceExtractor:
         output_pattern = os.path.join(temp_dir, f'frame_%05d.{self.frame_format}')
         
         try:
-            # Extract all frames using ffmpeg
+            # Extract all frames using ffmpeg (quiet mode for speed)
+            # Use rgb24 for PNG to preserve full chroma, yuvj444p for JPEG
+            # Use lanczos scaling for high-quality chroma upsampling
+            if self.frame_format in ['jpg', 'jpeg']:
+                output_args = {'q:v': 2, 'pix_fmt': 'yuvj444p', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
+            else:
+                output_args = {'pix_fmt': 'rgb24', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
             (
                 ffmpeg
                 .input(video_path)
-                .output(output_pattern)
-                .run(capture_stdout=True, capture_stderr=True, overwrite_output=True)
+                .output(output_pattern, **output_args)
+                .run(capture_stdout=True, capture_stderr=True, overwrite_output=True, quiet=True)
             )
             
             # Count the number of frames
@@ -193,6 +199,93 @@ class FrameSequenceExtractor:
         except ffmpeg.Error as e:
             logger.error(f"Error extracting frames: {e.stderr.decode() if e.stderr else 'Unknown error'}")
             raise
+    
+    def extract_frames_direct(self, hr_path: str, lr_path: str, start_frame: int, sequence_id: int) -> bool:
+        """
+        Extract a sequence of frames directly from videos without temp directories.
+        Much faster for simple sequential extraction.
+        
+        Args:
+            hr_path: Path to HR video
+            lr_path: Path to LR video  
+            start_frame: Starting frame number (1-indexed)
+            sequence_id: Sequence ID for naming
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        # Check if sequence already exists
+        if self.skip_existing:
+            first_frame_hr = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame00001.{self.frame_format}")
+            if os.path.exists(first_frame_hr):
+                return True
+        
+        try:
+            # Get video info for FPS calculation
+            video_info = self.get_video_info(hr_path)
+            fps = video_info['fps']
+            
+            # Extract HR frames using select filter (simplified approach)
+            for i in range(self.sequence_length):
+                frame_num = start_frame + i - 1  # 0-indexed
+                output_path = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame{i+1:05d}.{self.frame_format}")
+                
+                # Use select filter with proper syntax for ffmpeg-python
+                # Use rgb24 for PNG to preserve full chroma, yuvj444p for JPEG
+                # Use lanczos scaling for high-quality chroma upsampling
+                if self.frame_format in ['jpg', 'jpeg']:
+                    output_args = {'q:v': 2, 'pix_fmt': 'yuvj444p', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
+                else:
+                    output_args = {'pix_fmt': 'rgb24', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
+                
+                (
+                    ffmpeg
+                    .input(hr_path)
+                    .filter('select', f'gte(n,{frame_num})')
+                    .output(output_path, vframes=1, vsync=0, **output_args)
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True, quiet=True)
+                )
+            
+            # Extract LR frames
+            for i in range(self.sequence_length):
+                frame_num = start_frame + i - 1  # 0-indexed
+                output_path = os.path.join(self.lr_frames_dir, f"show{sequence_id:05d}_Frame{i+1:05d}.{self.frame_format}")
+                
+                # Use rgb24 for PNG to preserve full chroma, yuvj444p for JPEG
+                # Use lanczos scaling for high-quality chroma upsampling
+                if self.frame_format in ['jpg', 'jpeg']:
+                    output_args = {'q:v': 2, 'pix_fmt': 'yuvj444p', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
+                else:
+                    output_args = {'pix_fmt': 'rgb24', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
+                
+                (
+                    ffmpeg
+                    .input(lr_path)
+                    .filter('select', f'gte(n,{frame_num})')
+                    .output(output_path, vframes=1, vsync=0, **output_args)
+                    .overwrite_output()
+                    .run(capture_stdout=True, capture_stderr=True, quiet=True)
+                )
+            
+            return True
+            
+        except ffmpeg.Error as e:
+            if self.verbose_logging:
+                logger.error(f"Error extracting frames directly: {e.stderr.decode() if e.stderr else 'Unknown error'}")
+            # Clean up partial extractions
+            cleanup_pattern_hr = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame*.{self.frame_format}")
+            cleanup_pattern_lr = os.path.join(self.lr_frames_dir, f"show{sequence_id:05d}_Frame*.{self.frame_format}")
+            for path in glob.glob(cleanup_pattern_hr) + glob.glob(cleanup_pattern_lr):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            return False
+        except Exception as e:
+            if self.verbose_logging:
+                logger.error(f"Unexpected error in direct extraction: {str(e)}")
+            return False
     
     def extract_frame_sequence(self, hr_temp_dir: str, lr_temp_dir: str, start_frame: int) -> bool:
         """
@@ -238,9 +331,9 @@ class FrameSequenceExtractor:
                 hr_dst_path = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame{i+1:05d}.{self.frame_format}")
                 lr_dst_path = os.path.join(self.lr_frames_dir, f"show{sequence_id:05d}_Frame{i+1:05d}.{self.frame_format}")
                 
-                # Copy frames
-                shutil.copy2(hr_src_path, hr_dst_path)
-                shutil.copy2(lr_src_path, lr_dst_path)
+                # Copy frames (no need to preserve metadata, faster)
+                shutil.copy(hr_src_path, hr_dst_path)
+                shutil.copy(lr_src_path, lr_dst_path)
             
             # Increment sequence counter for next sequence
             self.sequence_counter += 1
@@ -279,115 +372,143 @@ class FrameSequenceExtractor:
         if self.verbose_logging:
             progress_logger.info(f"Extracting sequences from chunk pair: {chunk_name}")
         
-        # Create temporary directories for extracted frames
-        with tempfile.TemporaryDirectory() as temp_dir:
-            hr_temp_dir = os.path.join(temp_dir, 'hr')
-            lr_temp_dir = os.path.join(temp_dir, 'lr')
+        try:
+            # Get video info to calculate frame skip and total frames
+            video_info = self.get_video_info(hr_path)
+            fps = video_info['fps']
+            frame_count = video_info.get('nb_frames', 0)
             
-            try:
-                # Extract all frames to temporary directories
-                if self.verbose_logging:
-                    progress_logger.info("Extracting all frames to temporary directories...")
-                hr_frame_count = self.extract_frames_to_temp(hr_path, hr_temp_dir)
-                lr_frame_count = self.extract_frames_to_temp(lr_path, lr_temp_dir)
-                
-                # Get video info to calculate frame skip
-                video_info = self.get_video_info(hr_path)
-                fps = video_info['fps']
-                
-                # Calculate frames_to_skip based on time_gap or frame_skip
-                if self.time_gap is not None and not self.use_scene_detection:
-                    frames_to_skip = int(self.time_gap * fps)
-                else:
-                    frames_to_skip = self.frame_skip
-                
-                if self.verbose_logging:
-                    progress_logger.info(f"Extracted {hr_frame_count} HR frames and {lr_frame_count} LR frames")
-                
-                # Verify that both videos have the same number of frames
-                if hr_frame_count != lr_frame_count:
-                    logger.warning(f"HR and LR videos have different frame counts: {hr_frame_count} vs {lr_frame_count}")
+            # If nb_frames is not available, estimate from duration
+            if frame_count == 0:
+                frame_count = int(video_info['duration'] * fps)
+            
+            # Calculate frames_to_skip based on time_gap or frame_skip
+            if self.time_gap is not None and not self.use_scene_detection:
+                frames_to_skip = int(self.time_gap * fps)
+            else:
+                frames_to_skip = self.frame_skip
+            
+            # Determine sequence start frames and extraction method
+            start_frames = []
+            use_direct_extraction = False
+            
+            if self.use_scene_detection:
+                # Scene detection requires full frame extraction
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    hr_temp_dir = os.path.join(temp_dir, 'hr')
+                    lr_temp_dir = os.path.join(temp_dir, 'lr')
+                    
+                    if self.verbose_logging:
+                        progress_logger.info("Using scene detection (full extraction required)...")
+                    hr_frame_count = self.extract_frames_to_temp(hr_path, hr_temp_dir)
+                    lr_frame_count = self.extract_frames_to_temp(lr_path, lr_temp_dir)
                     frame_count = min(hr_frame_count, lr_frame_count)
-                else:
-                    frame_count = hr_frame_count
-                
-                # Determine sequence start frames
-                start_frames = []
-                
-                if self.use_scene_detection:
-                    # Initialize scene detector
+                    
                     scene_detector = SceneDetector()
-                    # Get scene list
                     scene_list = scene_detector.detect_scenes(hr_path)
                     
-                    # Convert scene boundaries to start frames
                     for scene in scene_list:
-                        start_frame = scene[0].get_frames() + 1  # +1 because ffmpeg is 1-indexed
-                        # Only add if there's enough frames left for a full sequence
+                        start_frame = scene[0].get_frames() + 1
                         if start_frame + self.sequence_length <= frame_count:
                             start_frames.append(start_frame)
-                
-                elif self.extract_full_chunks:
-                    # Extract every frame sequence without overlap
+                    
+                    if self.max_sequences is not None and len(start_frames) > self.max_sequences:
+                        if len(start_frames) > 1:
+                            step = (len(start_frames) - 1) / (self.max_sequences - 1)
+                            indices = [int(i * step) for i in range(self.max_sequences)]
+                            start_frames = [start_frames[i] for i in indices]
+                        else:
+                            start_frames = start_frames[:self.max_sequences]
+                    
+                    return self._extract_with_temp_dirs(hr_temp_dir, lr_temp_dir, start_frames, chunk_index, total_chunks, hr_path)
+            
+            elif self.extract_full_chunks:
+                # Full chunk extraction requires all frames
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    hr_temp_dir = os.path.join(temp_dir, 'hr')
+                    lr_temp_dir = os.path.join(temp_dir, 'lr')
+                    
+                    if self.verbose_logging:
+                        progress_logger.info("Extracting full chunks (full extraction required)...")
+                    hr_frame_count = self.extract_frames_to_temp(hr_path, hr_temp_dir)
+                    lr_frame_count = self.extract_frames_to_temp(lr_path, lr_temp_dir)
+                    frame_count = min(hr_frame_count, lr_frame_count)
+                    
                     max_start_frame = frame_count - self.sequence_length + 1
                     start_frames = list(range(1, max_start_frame + 1, self.sequence_length))
-                
-                else:
-                    # Extract sequences with time-based gaps
+                    
+                    if self.max_sequences is not None and len(start_frames) > self.max_sequences:
+                        if len(start_frames) > 1:
+                            step = (len(start_frames) - 1) / (self.max_sequences - 1)
+                            indices = [int(i * step) for i in range(self.max_sequences)]
+                            start_frames = [start_frames[i] for i in indices]
+                        else:
+                            start_frames = start_frames[:self.max_sequences]
+                    
+                    return self._extract_with_temp_dirs(hr_temp_dir, lr_temp_dir, start_frames, chunk_index, total_chunks, hr_path)
+            
+            else:
+                # Standard extraction with time-based gaps
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    hr_temp_dir = os.path.join(temp_dir, 'hr')
+                    lr_temp_dir = os.path.join(temp_dir, 'lr')
+                    
+                    if self.verbose_logging:
+                        progress_logger.info("Extracting frames with time-based gaps...")
+                    hr_frame_count = self.extract_frames_to_temp(hr_path, hr_temp_dir)
+                    lr_frame_count = self.extract_frames_to_temp(lr_path, lr_temp_dir)
+                    frame_count = min(hr_frame_count, lr_frame_count)
+                    
                     max_start_frame = frame_count - self.sequence_length + 1
                     
                     if max_start_frame <= 0:
                         logger.warning(f"Video too short to extract sequences of length {self.sequence_length}")
                         return 0
                     
-                    # Step is sequence_length plus the frames we want to skip
                     step = self.sequence_length + frames_to_skip
-                    
-                    # Generate start frames
                     start_frames = list(range(1, max_start_frame + 1, step))
+                    
+                    if self.max_sequences is not None and len(start_frames) > self.max_sequences:
+                        if len(start_frames) > 1:
+                            step = (len(start_frames) - 1) / (self.max_sequences - 1)
+                            indices = [int(i * step) for i in range(self.max_sequences)]
+                            start_frames = [start_frames[i] for i in indices]
+                        else:
+                            start_frames = start_frames[:self.max_sequences]
+                    
+                    return self._extract_with_temp_dirs(hr_temp_dir, lr_temp_dir, start_frames, chunk_index, total_chunks, hr_path)
                 
-                # Check if we need to limit the number of sequences
-                if self.max_sequences is not None and len(start_frames) > self.max_sequences:
-                    # Evenly distribute the sequences across the video
-                    if len(start_frames) > 1:
-                        step = (len(start_frames) - 1) / (self.max_sequences - 1)
-                        indices = [int(i * step) for i in range(self.max_sequences)]
-                        start_frames = [start_frames[i] for i in indices]
-                    else:
-                        start_frames = start_frames[:self.max_sequences]
+        except Exception as e:
+            logger.error(f"Error during frame extraction for {chunk_name}: {str(e)}")
+            return 0
+    
+    def _extract_with_temp_dirs(self, hr_temp_dir: str, lr_temp_dir: str, start_frames: list, 
+                                 chunk_index: int, total_chunks: int, hr_path: str) -> int:
+        """
+        Helper method to extract sequences using temp directories (for scene detection and full chunks).
+        """
+        sequence_count = 0
+        desc = f"Processing chunk {chunk_index}/{total_chunks} [{os.path.basename(hr_path)}]"
+        
+        if start_frames:
+            for start_frame in tqdm(start_frames, desc=desc, leave=True):
+                try:
+                    success = self.extract_frame_sequence(hr_temp_dir, lr_temp_dir, start_frame)
+                    if success:
+                        sequence_count += 1
+                    
+                    if self.max_sequences is not None and sequence_count >= self.max_sequences:
+                        break
                 
-                # Extract sequences at each start frame with a single progress bar
-                sequence_count = 0
-                
-                # Create description with chunk info
-                desc = f"Processing chunk {chunk_index}/{total_chunks} [{os.path.basename(hr_path)}]"
-                
-                # Only show progress bar if there are frames to process
-                if start_frames:
-                    for start_frame in tqdm(start_frames, desc=desc, leave=True):
-                        try:
-                            success = self.extract_frame_sequence(hr_temp_dir, lr_temp_dir, start_frame)
-                            if success:
-                                sequence_count += 1
-                        
-                            # Check if we've reached the maximum number of sequences
-                            if self.max_sequences is not None and sequence_count >= self.max_sequences:
-                                break
-                        
-                        except Exception as e:
-                            if self.verbose_logging:
-                                logger.error(f"Error extracting sequence at frame {start_frame}: {str(e)}")
-                else:
-                    # Show a message if no frames to process (too short video)
-                    tqdm.write(f"{desc}: No sequences to extract (video too short or empty)")
-                
-                if self.verbose_logging:
-                    progress_logger.info(f"Extracted {sequence_count} sequences from chunk")
-                return sequence_count
-                
-            except Exception as e:
-                logger.error(f"Error during frame extraction for {chunk_name}: {str(e)}")
-                return 0
+                except Exception as e:
+                    if self.verbose_logging:
+                        logger.error(f"Error extracting sequence at frame {start_frame}: {str(e)}")
+        else:
+            tqdm.write(f"{desc}: No sequences to extract (video too short or empty)")
+        
+        if self.verbose_logging:
+            progress_logger.info(f"Extracted {sequence_count} sequences from chunk")
+        return sequence_count
 
     def extract_all_sequences(self) -> int:
         """

@@ -28,10 +28,13 @@ class CodecDegradation(BaseDegradation):
             return self.selected_params
             
         # Otherwise return the standard formatted parameters
-        return {
+        result = {
             "codec": self.selected_params["codec"],
             "quality": self.selected_params["quality"]
         }
+        if self.selected_params.get("preset") is not None:
+            result["preset"] = self.selected_params["preset"]
+        return result
     
     def get_codec_params(self) -> Dict[str, Any]:
         """
@@ -41,11 +44,12 @@ class CodecDegradation(BaseDegradation):
         Returns:
             Dictionary of encoding parameters
         """
-        # Select random codec and quality
-        codec, quality = self.codec_handler.get_random_encoding_config()
+        # Select random codec, quality, and preset
+        codec, quality, preset = self.codec_handler.get_random_encoding_config()
         self.selected_params = {
             "codec": codec,
-            "quality": quality
+            "quality": quality,
+            "preset": preset
         }
         
         # Common parameters
@@ -59,11 +63,12 @@ class CodecDegradation(BaseDegradation):
         }
         
         # Codec-specific parameters
+        # Use randomized preset if available, otherwise use default
         codec_params = {
-            'h264': {'vcodec': 'libx264', 'crf': quality, 'preset': 'medium'},
-            'h265': {'vcodec': 'libx265', 'crf': quality, 'preset': 'medium'},
+            'h264': {'vcodec': 'libx264', 'crf': quality, 'preset': preset if preset else 'veryslow'},
+            'h265': {'vcodec': 'libx265', 'crf': quality, 'preset': preset if preset else 'veryslow'},
             'vp9': {'vcodec': 'libvpx-vp9', 'crf': quality, 'b': 0},
-            'av1': {'vcodec': 'libsvtav1', 'crf': quality, 'preset': 7},
+            'av1': {'vcodec': 'libsvtav1', 'crf': quality, 'preset': preset if preset is not None else 2},
             'mpeg2': {'vcodec': 'mpeg2video', 'b': f'{quality}k'}  # Use 'b' for bitrate in kbps
         }
         

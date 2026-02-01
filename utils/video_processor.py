@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 import subprocess
 from typing import Any, Dict, List, Tuple
 from functools import wraps
@@ -40,7 +41,7 @@ def check_ffmpeg_available():
     try:
         subprocess.run(['ffmpeg', '-version'], capture_output=True, check=True)
         return True
-    except (subprocess.SubProcessError, FileNotFoundError):
+    except (subprocess.SubprocessError, FileNotFoundError):
         logger.error("FFmpeg is not available on the system. Please install FFmpeg to continue.")
         return False
 
@@ -75,7 +76,21 @@ class VideoProcessor:
         self.hr_resize = scene_config.get('hr_resize', {})
         self.hr_resize_enabled = self.hr_resize.get('enabled', False)
         self.hr_resize_scale = self.hr_resize.get('scale', 1.0)
-        self.hr_resize_filter = self.hr_resize.get('filter', 'bicubic')
+        
+        # Handle filter selection - support both single filter (string) and list of filters
+        filter_config = self.hr_resize.get('filters') or self.hr_resize.get('filter', 'bicubic')
+        if isinstance(filter_config, list):
+            self.hr_resize_filter = random.choice(filter_config)
+        else:
+            self.hr_resize_filter = filter_config
+        
+        # Tonemap settings for HDR to SDR conversion
+        self.tonemap = scene_config.get('tonemap', {})
+        self.tonemap_enabled = self.tonemap.get('enabled', False)
+        self.tonemap_auto_detect = self.tonemap.get('auto_detect', True)
+        self.tonemap_algorithm = self.tonemap.get('algorithm', 'hable')
+        self.tonemap_desat = self.tonemap.get('desat', 0.5)
+        self.tonemap_target_nits = self.tonemap.get('target_nits', 100)
         
         # Processing settings
         self.use_existing_chunks = config.get('use_existing_chunks', False)
@@ -91,6 +106,11 @@ class VideoProcessor:
         self._setup_directories()
         self._setup_degradations(config)
         self.video_info = self.scene_detector.get_video_info(self.input_path)
+        
+        # Find the last chunk number to continue numbering
+        self.chunk_offset = self._get_last_chunk_number()
+        if self.chunk_offset > 0:
+            logger.info(f"Continuing from chunk {self.chunk_offset} (found {self.chunk_offset} existing chunks)")
 
     def _verify_input_file(self):
         """Verify input file exists"""
@@ -102,6 +122,33 @@ class VideoProcessor:
         directories = [self.hr_directory, self.lr_directory]
         for directory in directories:
             os.makedirs(directory, exist_ok=True)
+    
+    def _round_to_even(self, value: int) -> int:
+        """Round a value to the nearest even number for codec compatibility"""
+        return (value // 2) * 2
+    
+    def _get_last_chunk_number(self):
+        """Get the highest chunk number in the HR directory to continue numbering"""
+        try:
+            chunk_files = [f for f in os.listdir(self.hr_directory) 
+                          if f.startswith('chunk_') and f.endswith(('.mp4', '.mkv'))]
+            if not chunk_files:
+                return 0
+            
+            # Extract numbers from filenames like 'chunk_0001.mp4'
+            chunk_numbers = []
+            for f in chunk_files:
+                try:
+                    # Extract the number part (e.g., '0001' from 'chunk_0001.mp4')
+                    num_str = f.split('_')[1].split('.')[0]
+                    chunk_numbers.append(int(num_str))
+                except (IndexError, ValueError):
+                    continue
+            
+            return max(chunk_numbers) if chunk_numbers else 0
+        except Exception as e:
+            logger.warning(f"Could not determine last chunk number: {str(e)}")
+            return 0
 
     def _setup_degradations(self, config):
         """Set up degradation pipeline"""
@@ -122,9 +169,9 @@ class VideoProcessor:
         Create FFmpeg command for splitting video into HR chunks.
         
         This method constructs an FFmpeg command to extract segments from the 
-        input video. If hr_resize is enabled in the configuration, it will also
-        resize the HR chunks during creation using the specified scale factor
-        and filter.
+        input video. It applies tonemapping (if enabled and HDR is detected) to
+        convert HDR to SDR, then resizes the HR chunks (if enabled) using the
+        specified scale factor and filter.
         
         Args:
             start_frame: Starting frame number
@@ -151,22 +198,54 @@ class VideoProcessor:
             '-preset', self.split_preset,
             '-tune', 'lossless',
             '-qp', '0',
-            '-pix_fmt', self.video_info['pix_fmt'],
+            '-pix_fmt', 'yuv422p',
             '-fps_mode', 'cfr',
             '-colorspace', 'bt709'
         ]
         
+        # Build filter chain
+        filters = []
+        
+        # Apply tonemapping if enabled
+        if self.tonemap_enabled:
+            # Check if video is HDR
+            color_transfer = self.video_info.get('color_transfer', '')
+            color_space = self.video_info.get('color_space', '')
+            color_primaries = self.video_info.get('color_primaries', '')
+            
+            is_hdr = (
+                color_transfer in ['smpte2084', 'arib-std-b67'] or
+                'bt2020' in color_space or
+                'bt2020' in color_primaries
+            )
+            
+            # Apply tonemap if HDR or if auto_detect is disabled
+            if is_hdr or not self.tonemap_auto_detect:
+                tonemap_filter = (
+                    f"zscale=transfer=linear:primaries=bt709,"
+                    f"tonemap={self.tonemap_algorithm}:desat={self.tonemap_desat}:peak={self.tonemap_target_nits},"
+                    f"zscale=transfer=bt709:primaries=bt709:matrix=bt709,"
+                    f"format=yuv422p"
+                )
+                filters.append(tonemap_filter)
+                if is_hdr:
+                    logger.info(f"HDR detected - applying tonemapping: {self.tonemap_algorithm} (desat={self.tonemap_desat}, target={self.tonemap_target_nits} nits)")
+                else:
+                    logger.info(f"Applying tonemapping (auto_detect disabled): {self.tonemap_algorithm}")
+        
         # Apply HR resize if enabled
         if self.hr_resize_enabled:
-            # Calculate new dimensions based on scale factor
-            width = int(self.video_info['width'] * self.hr_resize_scale)
-            height = int(self.video_info['height'] * self.hr_resize_scale)
+            # Calculate new dimensions based on scale factor and ensure they're even for codec compatibility
+            width = self._round_to_even(int(self.video_info['width'] * self.hr_resize_scale))
+            height = self._round_to_even(int(self.video_info['height'] * self.hr_resize_scale))
             
             # Add scale filter
-            ffmpeg_cmd.extend([
-                '-vf', f'scale={width}:{height}:flags={self.hr_resize_filter}'
-            ])
+            filters.append(f'scale={width}:{height}:sws_flags={self.hr_resize_filter}')
             logger.info(f"Resizing HR chunks to {width}x{height} using {self.hr_resize_filter} filter")
+        
+        # Add filter chain if any filters were added
+        if filters:
+            ffmpeg_cmd.extend(['-vf', ','.join(filters)])
         
         if self.strip_audio:
             ffmpeg_cmd.extend(['-an', '-map', '0:v:0'])
@@ -178,10 +257,11 @@ class VideoProcessor:
 
     def _process_chunk_range(self, start_frame: int, end_frame: int, chunk_number: int) -> str:
         """Process a range of frames into a chunk"""
-        output_file = os.path.join(self.hr_directory, f'chunk_{chunk_number:04d}.mp4')
+        actual_chunk_number = self.chunk_offset + chunk_number
+        output_file = os.path.join(self.hr_directory, f'chunk_{actual_chunk_number:04d}.mp4')
         ffmpeg_cmd = self._create_ffmpeg_split_command(start_frame, end_frame, output_file)
-        
-        logger.debug(f"Splitting chunk {chunk_number}: {output_file} (frames {start_frame}-{end_frame})")
+
+        logger.debug(f"Splitting chunk {actual_chunk_number}: {output_file} (frames {start_frame}-{end_frame})")
         subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return output_file
 
@@ -212,7 +292,8 @@ class VideoProcessor:
 
     def _create_chunk_pairs(self):
         """Create HR/LR pairs from HR chunks"""
-        chunk_files = sorted([f for f in os.listdir(self.hr_directory) if f.endswith(".mp4")])
+        chunk_files = sorted([f for f in os.listdir(self.hr_directory) 
+                             if f.endswith((".mkv", ".mp4"))])
         chunk_pairs = [(os.path.join(self.hr_directory, f), 
                        os.path.join(self.lr_directory, f)) for f in chunk_files]
         
@@ -293,10 +374,11 @@ class VideoProcessor:
 
     def split_video(self) -> List[Tuple[str, str]]:
         """Split video based on configured strategy"""
-        # Clean existing files
-        for directory in [self.hr_directory, self.lr_directory]:
-            for file in os.listdir(directory):
-                os.unlink(os.path.join(directory, file))
+        # Clean existing files only if not continuing from previous chunks
+        if self.chunk_offset == 0:
+            for directory in [self.hr_directory, self.lr_directory]:
+                for file in os.listdir(directory):
+                    os.unlink(os.path.join(directory, file))
         
         if self.chunk_strategy == "scene_detection":
             return self.split_video_by_scenes()
@@ -355,10 +437,11 @@ class VideoProcessor:
         logger.info("Processing existing HR chunks...")
         
         # Get existing HR chunks
-        chunk_files = sorted([f for f in os.listdir(self.hr_directory) if f.endswith(".mp4")])
+        chunk_files = sorted([f for f in os.listdir(self.hr_directory) 
+                             if f.endswith((".mkv", ".mp4"))])
         if not chunk_files:
             raise ValueError("No HR chunks found in the HR directory")
-            
+
         # Create chunk pairs
         chunk_pairs = [(os.path.join(self.hr_directory, f), 
                     os.path.join(self.lr_directory, f)) for f in chunk_files]

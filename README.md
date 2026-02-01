@@ -31,7 +31,7 @@ pip install -r requirements.txt
 ```
 
 3. **Edit ```config.yaml``` and configure it as you wish**
-    - Specify the path to the video
+    - Set `input` to a video file or folder of videos (auto-detects which mode to use)
     - Customize video degradations
     - NOTE: Only resizing and compression are enabled by default
 
@@ -53,10 +53,37 @@ The first step creates paired high-quality and degraded video chunks:
 - Processes each chunk with random codecs and quality settings
 - Creates HR (original) and LR (degraded) pairs
 
-Arguments:
+The tool automatically detects whether you're processing a single video or a folder of videos.
+
+**Single Video Mode:**
+Edit `config.yaml` and set the `input` to a video file:
+```yaml
+input: "C:/path/to/video.mp4"
+```
+
+**Batch Processing Mode:**
+Edit `config.yaml` and set the `input` to a folder path:
+```yaml
+input: "C:/path/to/video/folder"
+```
+
+Then run:
 ```bash
 python main.py --config config.yaml
 ```
+
+When processing a folder, each video will be processed independently and output to its own subfolder:
+- `chunks_directory/video1_name/HR/`
+- `chunks_directory/video1_name/LR/`
+- `chunks_directory/video2_name/HR/`
+- `chunks_directory/video2_name/LR/`
+- etc.
+
+The batch processor will:
+- Automatically detect all videos in the folder (supports .mp4, .mov, .mkv, .avi, .webm, .flv)
+- Process each video independently
+- Continue processing even if one video fails
+- Provide a summary report at the end
 
 ### Frame Extraction (frame_extractor.py)
 The second step extracts frame sequences from the video chunks.

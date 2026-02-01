@@ -1,5 +1,5 @@
 import random
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any
 import logging
 from .base_degradation import BaseDegradation
 
@@ -79,9 +79,16 @@ class BlurDegradation(BaseDegradation):
     
     def _get_motion_blur_filter(self, frames: int, angle: int) -> str:
         """Generate motion blur filter string"""
-        # Use tblend filter for temporal blending
-        filters = [f"tblend=all_mode=average:all_opacity=0.5" for _ in range(frames - 1)]
-        return ','.join(filters)
+        # If angle is 0, use temporal blending for simple motion blur
+        if angle == 0:
+            filters = [f"tblend=all_mode=average:all_opacity=0.5" for _ in range(frames - 1)]
+            return ','.join(filters)
+        
+        # For directional motion blur, use directional blur with the specified angle
+        # Convert angle to radians for directional blur calculation
+        # Use a combination of temporal blending and directional blur
+        strength = frames * 2  # Scale strength based on frames
+        return f"tblend=all_mode=average:all_opacity=0.5,smartblur=lr={strength}:ls={angle/360.0}:lt=-1"
     
     def apply(self, input_path: str, output_path: str) -> str:
         """Direct file processing - not used in pipeline"""

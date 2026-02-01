@@ -1,4 +1,3 @@
-import random
 from typing import Dict, Any
 import logging
 from .base_degradation import BaseDegradation
@@ -65,7 +64,7 @@ class ChromaDelayDegradation(BaseDegradation):
         except ZeroDivisionError:
             fps = 25  # Fallback
             if self.logger:
-                self.logger.warning(f"Could not parse frame rate '{frame_rate}', defaulting to {fps} fps")
+                self.logger.logger.warning(f"Could not parse frame rate '{frame_rate}', defaulting to {fps} fps")
 
         delay_time = delay_frames / fps
         
