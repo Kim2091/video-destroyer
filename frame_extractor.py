@@ -200,93 +200,6 @@ class FrameSequenceExtractor:
             logger.error(f"Error extracting frames: {e.stderr.decode() if e.stderr else 'Unknown error'}")
             raise
     
-    def extract_frames_direct(self, hr_path: str, lr_path: str, start_frame: int, sequence_id: int) -> bool:
-        """
-        Extract a sequence of frames directly from videos without temp directories.
-        Much faster for simple sequential extraction.
-        
-        Args:
-            hr_path: Path to HR video
-            lr_path: Path to LR video  
-            start_frame: Starting frame number (1-indexed)
-            sequence_id: Sequence ID for naming
-            
-        Returns:
-            True if successful, False otherwise
-        """
-        # Check if sequence already exists
-        if self.skip_existing:
-            first_frame_hr = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame00001.{self.frame_format}")
-            if os.path.exists(first_frame_hr):
-                return True
-        
-        try:
-            # Get video info for FPS calculation
-            video_info = self.get_video_info(hr_path)
-            fps = video_info['fps']
-            
-            # Extract HR frames using select filter (simplified approach)
-            for i in range(self.sequence_length):
-                frame_num = start_frame + i - 1  # 0-indexed
-                output_path = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame{i+1:05d}.{self.frame_format}")
-                
-                # Use select filter with proper syntax for ffmpeg-python
-                # Use rgb24 for PNG to preserve full chroma, yuvj444p for JPEG
-                # Use lanczos scaling for high-quality chroma upsampling
-                if self.frame_format in ['jpg', 'jpeg']:
-                    output_args = {'q:v': 2, 'pix_fmt': 'yuvj444p', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
-                else:
-                    output_args = {'pix_fmt': 'rgb24', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
-                
-                (
-                    ffmpeg
-                    .input(hr_path)
-                    .filter('select', f'gte(n,{frame_num})')
-                    .output(output_path, vframes=1, vsync=0, **output_args)
-                    .overwrite_output()
-                    .run(capture_stdout=True, capture_stderr=True, quiet=True)
-                )
-            
-            # Extract LR frames
-            for i in range(self.sequence_length):
-                frame_num = start_frame + i - 1  # 0-indexed
-                output_path = os.path.join(self.lr_frames_dir, f"show{sequence_id:05d}_Frame{i+1:05d}.{self.frame_format}")
-                
-                # Use rgb24 for PNG to preserve full chroma, yuvj444p for JPEG
-                # Use lanczos scaling for high-quality chroma upsampling
-                if self.frame_format in ['jpg', 'jpeg']:
-                    output_args = {'q:v': 2, 'pix_fmt': 'yuvj444p', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
-                else:
-                    output_args = {'pix_fmt': 'rgb24', 'sws_flags': 'lanczos+accurate_rnd+full_chroma_int'}
-                
-                (
-                    ffmpeg
-                    .input(lr_path)
-                    .filter('select', f'gte(n,{frame_num})')
-                    .output(output_path, vframes=1, vsync=0, **output_args)
-                    .overwrite_output()
-                    .run(capture_stdout=True, capture_stderr=True, quiet=True)
-                )
-            
-            return True
-            
-        except ffmpeg.Error as e:
-            if self.verbose_logging:
-                logger.error(f"Error extracting frames directly: {e.stderr.decode() if e.stderr else 'Unknown error'}")
-            # Clean up partial extractions
-            cleanup_pattern_hr = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame*.{self.frame_format}")
-            cleanup_pattern_lr = os.path.join(self.lr_frames_dir, f"show{sequence_id:05d}_Frame*.{self.frame_format}")
-            for path in glob.glob(cleanup_pattern_hr) + glob.glob(cleanup_pattern_lr):
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
-            return False
-        except Exception as e:
-            if self.verbose_logging:
-                logger.error(f"Unexpected error in direct extraction: {str(e)}")
-            return False
-    
     def extract_frame_sequence(self, hr_temp_dir: str, lr_temp_dir: str, start_frame: int) -> bool:
         """
         Extract a sequence of frames from HR and LR temporary directories.
@@ -388,9 +301,8 @@ class FrameSequenceExtractor:
             else:
                 frames_to_skip = self.frame_skip
             
-            # Determine sequence start frames and extraction method
+            # Determine sequence start frames
             start_frames = []
-            use_direct_extraction = False
             
             if self.use_scene_detection:
                 # Scene detection requires full frame extraction

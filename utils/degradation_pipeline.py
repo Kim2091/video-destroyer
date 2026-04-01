@@ -87,15 +87,32 @@ class DegradationPipeline:
                     simple_filters.append(expr)
 
             if complex_filters:
-                # Build a unified complex filter graph
-                # Chain simple filters as a prefix to the first complex graph's input
+                # Chain multiple complex filter graphs through intermediate labels.
+                # Each complex graph consumes the unnamed input stream; when there
+                # are several, we label the output of graph N and feed it as the
+                # input of graph N+1 so the unnamed input is only consumed once.
+                chained_parts = []
+                for idx, cf in enumerate(complex_filters):
+                    is_last = (idx == len(complex_filters) - 1)
+
+                    # If this is not the first complex graph, replace its unnamed
+                    # input with the previous graph's output label.
+                    if idx > 0:
+                        cf = f'[_chain_{idx - 1}]' + cf
+
+                    # If this is not the last complex graph, label its output so
+                    # the next graph can consume it.
+                    if not is_last:
+                        cf = cf + f'[_chain_{idx}]'
+
+                    chained_parts.append(cf)
+
+                complex_filter = ';'.join(chained_parts)
+
+                # Prepend simple filters before the first complex graph's input
                 if simple_filters:
                     simple_chain = ','.join(simple_filters)
-                    # Prepend simple filters before the first complex graph
-                    # by connecting them to its input
-                    complex_filter = simple_chain + ',' + ';'.join(complex_filters)
-                else:
-                    complex_filter = ';'.join(complex_filters)
+                    complex_filter = simple_chain + ',' + complex_filter
 
                 logger.debug(f"Applied complex filter graph: {complex_filter}")
                 output_args = {'filter_complex': complex_filter}
@@ -107,29 +124,34 @@ class DegradationPipeline:
         else:
             output_args = {}
         
-        # Handle codec degradation separately since it's applied at output
-        if self.codec_degradation and self.codec_degradation.should_apply():
-            # Get codec parameters
-            codec_params = self.codec_degradation.get_codec_params()
-            
-            # Merge codec parameters with filter parameters
-            output_args.update(codec_params)
-            
-            if self.codec_degradation.logger:
-                self.codec_degradation.logger.log_degradation_applied(
-                    degradation_name=self.codec_degradation.name,
-                    was_applied=True,
-                    probability=self.codec_degradation.probability,
-                    params=self.codec_degradation.get_params()
-                )
-        elif self.codec_degradation:
-            if self.codec_degradation.logger:
-                self.codec_degradation.logger.log_degradation_applied(
-                    degradation_name=self.codec_degradation.name,
-                    was_applied=False,
-                    probability=self.codec_degradation.probability,
-                    params=None
-                )
+        # Handle codec degradation separately since it's applied at output.
+        # Evaluate should_apply() once and reuse the result to avoid a
+        # separate random roll from the non-codec degradations above.
+        if self.codec_degradation:
+            codec_should_apply = self.codec_degradation.should_apply()
+
+            if codec_should_apply:
+                # Get codec parameters
+                codec_params = self.codec_degradation.get_codec_params()
+
+                # Merge codec parameters with filter parameters
+                output_args.update(codec_params)
+
+                if self.codec_degradation.logger:
+                    self.codec_degradation.logger.log_degradation_applied(
+                        degradation_name=self.codec_degradation.name,
+                        was_applied=True,
+                        probability=self.codec_degradation.probability,
+                        params=self.codec_degradation.get_params()
+                    )
+            else:
+                if self.codec_degradation.logger:
+                    self.codec_degradation.logger.log_degradation_applied(
+                        degradation_name=self.codec_degradation.name,
+                        was_applied=False,
+                        probability=self.codec_degradation.probability,
+                        params=None
+                    )
         
         # Create the final output with all parameters
         stream = (

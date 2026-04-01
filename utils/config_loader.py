@@ -124,13 +124,16 @@ def load_config(config_path: str) -> Dict[str, Any]:
     # Convert array ranges to dictionary format for backward compatibility
     config = convert_ranges_to_dict(config)
         
-    # For backward compatibility, create codecs config from degradations
+    # Codec degradation is required — validate it exists and is enabled
     codec_degradation = next(
-        (d for d in degradations if d['name'] == 'codec' and d['enabled']), 
+        (d for d in degradations if d['name'] == 'codec'),
         None
     )
-    if codec_degradation:
-        config['codecs'] = codec_degradation['params']
+    if not codec_degradation:
+        raise ValueError("Codec degradation is missing from the degradations list. It is required for the pipeline to produce output.")
+    if not codec_degradation.get('enabled', True):
+        raise ValueError("Codec degradation cannot be disabled. It is required for the pipeline to produce output.")
+    config['codecs'] = codec_degradation['params']
 
     # Validate chunk strategy
     valid_strategies = ["duration", "scene_detection", "frame_count"]

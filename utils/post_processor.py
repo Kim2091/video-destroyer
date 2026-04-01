@@ -452,19 +452,19 @@ class PostProcessor:
         # Group frames by sequence
         sequences = defaultdict(list)
         for filename in os.listdir(input_dir):
-            if filename.endswith('.png') or filename.endswith('.jpg'):
+            if filename.endswith(('.png', '.jpg', '.jpeg')):
                 seq_name, frame_num = self._parse_sequence_filename(filename)
                 if seq_name and frame_num:
                     sequences[seq_name].append((frame_num, filename))
-        
+
         # Sort frames within each sequence
         for seq_name in sequences:
             sequences[seq_name].sort(key=lambda x: x[0])
-        
+
         if not sequences:
             logger.warning("No valid frame sequences found in HR tiled directory")
             return
-        
+
         logger.info(f"Found {len(sequences)} sequence(s) to analyze")
         logger.info(f"Blank detection thresholds: edge_density >= {self.edge_threshold}%, variance >= {self.variance_threshold}")
         logger.info(f"Sequences with {self.min_blank_frames}+ blank frames will be moved")
@@ -547,21 +547,21 @@ class PostProcessor:
         # Group frames by sequence
         sequences = defaultdict(list)
         for filename in os.listdir(input_dir):
-            if filename.endswith('.png') or filename.endswith('.jpg'):
+            if filename.endswith(('.png', '.jpg', '.jpeg')):
                 seq_name, frame_num = self._parse_sequence_filename(filename)
                 if seq_name and frame_num:
                     sequences[seq_name].append((frame_num, filename))
-        
+
         # Sort frames within each sequence
         for seq_name in sequences:
             sequences[seq_name].sort(key=lambda x: x[0])
-        
+
         if not sequences:
             logger.warning("No valid frame sequences found in HR tiled directory")
             return
-        
+
         logger.info(f"Found {len(sequences)} sequence(s) to analyze")
-        
+
         threshold_parts = []
         if self.min_motion >= 0:
             threshold_parts.append(f"min: {self.min_motion}%")
@@ -609,19 +609,19 @@ class PostProcessor:
         # Group frames by sequence
         sequences = defaultdict(list)
         for filename in os.listdir(input_dir):
-            if filename.endswith('.png') or filename.endswith('.jpg'):
+            if filename.endswith(('.png', '.jpg', '.jpeg')):
                 seq_name, frame_num = self._parse_sequence_filename(filename)
                 if seq_name and frame_num:
                     sequences[seq_name].append((frame_num, filename))
-        
+
         # Sort frames within each sequence
         for seq_name in sequences:
             sequences[seq_name].sort(key=lambda x: x[0])
-        
+
         if not sequences:
             logger.warning("No valid frame sequences found")
             return
-        
+
         logger.info(f"Found {len(sequences)} sequence(s) to check")
         logger.info(f"Expected sequence length: {expected_length} frames")
         

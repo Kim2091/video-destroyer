@@ -47,8 +47,9 @@ class ResizeDegradation(BaseDegradation):
         return random.random() < down_up_prob
     
     def _round_to_even(self, value: int) -> int:
-        """Round a value to the nearest even number for codec compatibility"""
-        return (value // 2) * 2
+        """Round a value to the nearest even number for codec compatibility.
+        Returns at least 2 to avoid zero-dimension outputs."""
+        return max((value // 2) * 2, 2)
     
     def get_params(self) -> Dict[str, Any]:
         """Return the parameters used for this degradation"""

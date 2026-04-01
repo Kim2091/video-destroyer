@@ -81,18 +81,27 @@ class SceneDetector:
             
             # Get pixel format
             pix_fmt = video_stream.get('pix_fmt', 'yuv420p')
-            
+
+            # Get frame count if available
+            nb_frames = video_stream.get('nb_frames')
+            if nb_frames is not None:
+                try:
+                    nb_frames = int(nb_frames)
+                except (ValueError, TypeError):
+                    nb_frames = None
+
             # Get HDR metadata
             color_transfer = video_stream.get('color_transfer', '')
             color_space = video_stream.get('color_space', '')
             color_primaries = video_stream.get('color_primaries', '')
-            
+
             return {
                 'duration': duration,
                 'fps': fps,
                 'width': width,
                 'height': height,
                 'pix_fmt': pix_fmt,
+                'nb_frames': nb_frames,
                 'color_transfer': color_transfer,
                 'color_space': color_space,
                 'color_primaries': color_primaries

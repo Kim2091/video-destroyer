@@ -1,3 +1,4 @@
+import copy
 import logging
 import argparse
 import os
@@ -183,8 +184,8 @@ def main():
                 logger.info(f"Video {i}/{len(video_files)}: {Path(video_path).name}")
                 logger.info(f"{'='*80}")
                 
-                # Create a copy of config for this video
-                video_config = config.copy()
+                # Deep copy config so nested dicts aren't shared between videos
+                video_config = copy.deepcopy(config)
                 
                 # Process the video (skip frame extraction for batch mode)
                 success, error = process_single_video(video_config, video_path, skip_frame_extraction=True)

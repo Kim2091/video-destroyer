@@ -188,18 +188,29 @@ class VideoProcessor:
         
         # Processing settings
         self.use_existing_chunks = config.get('use_existing_chunks', False)
-        
+
         # Initialize components
         self.scene_detector = scene_detector or SceneDetector(config=config)
         self.codec_handler = codec_handler
         self.logger = DegradationLogger(config)
         self.degradation_pipeline = DegradationPipeline(config)
-        
-        # Setup
-        self._verify_input_file()
+
+        # Setup directories and degradations
         self._setup_directories()
         self._setup_degradations(config)
-        self.video_info = self.scene_detector.get_video_info(self.input_path)
+
+        if self.use_existing_chunks:
+            # When reprocessing existing chunks, get video info from the first
+            # HR chunk instead of requiring the original input video.
+            hr_chunks = sorted([f for f in os.listdir(self.hr_directory)
+                                if f.endswith(('.mkv', '.mp4'))])
+            if not hr_chunks:
+                raise ValueError("No HR chunks found in the HR directory for use_existing_chunks mode")
+            first_chunk = os.path.join(self.hr_directory, hr_chunks[0])
+            self.video_info = self.scene_detector.get_video_info(first_chunk)
+        else:
+            self._verify_input_file()
+            self.video_info = self.scene_detector.get_video_info(self.input_path)
 
         # Detect best available lossless encoder for HR chunks (cached across instances)
         self.hr_encoder = self._detect_hr_encoder()
@@ -221,8 +232,9 @@ class VideoProcessor:
             os.makedirs(directory, exist_ok=True)
     
     def _round_to_even(self, value: int) -> int:
-        """Round a value to the nearest even number for codec compatibility"""
-        return (value // 2) * 2
+        """Round a value to the nearest even number for codec compatibility.
+        Returns at least 2 to avoid zero-dimension outputs."""
+        return max((value // 2) * 2, 2)
     
     def _get_last_chunk_number(self):
         """Get the highest chunk number in the HR directory to continue numbering"""
