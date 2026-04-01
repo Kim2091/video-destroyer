@@ -57,33 +57,50 @@ def convert_ranges_to_dict(config: Dict[str, Any]) -> Dict[str, Any]:
                     
     return config
 
+def _normalize_path_values(config: Dict[str, Any]) -> None:
+    """Normalize path-valued config keys so users can write forward slashes
+    (e.g. ``C:/Videos/input.mp4``) without needing to escape backslashes.
+
+    Only touches keys that are known to hold filesystem paths.
+    """
+    # Top-level path keys
+    _TOP_LEVEL_PATHS = ('input', 'chunks_directory')
+    for key in _TOP_LEVEL_PATHS:
+        if key in config and isinstance(config[key], str):
+            config[key] = os.path.normpath(config[key])
+
+    # Nested path keys
+    _NESTED_PATHS = {
+        'frame_extraction': ('output_directory',),
+        'logging': ('directory',),
+    }
+    for section, keys in _NESTED_PATHS.items():
+        sub = config.get(section)
+        if not isinstance(sub, dict):
+            continue
+        for key in keys:
+            if key in sub and isinstance(sub[key], str):
+                sub[key] = os.path.normpath(sub[key])
+
+
 def load_config(config_path: str) -> Dict[str, Any]:
     """
     Load configuration from a YAML file.
-    
+
     Args:
         config_path: Path to the configuration file
-        
+
     Returns:
         Dictionary containing configuration parameters
     """
     if not os.path.exists(config_path):
         raise FileNotFoundError(f"Configuration file not found: {config_path}")
-    
-    # Custom YAML loader to handle Windows paths
-    class WindowsPathLoader(yaml.SafeLoader):
-        pass
-    
-    def windows_path_constructor(loader, node):
-        # Convert the scalar value to a string and normalize path
-        scalar_value = loader.construct_scalar(node)
-        return os.path.normpath(scalar_value)
-    
-    # Register the constructor for strings
-    WindowsPathLoader.add_constructor('tag:yaml.org,2002:str', windows_path_constructor)
-    
+
     with open(config_path, 'r') as file:
-        config = yaml.load(file, Loader=WindowsPathLoader)
+        config = yaml.safe_load(file)
+
+    # Normalize only the keys that are actual filesystem paths
+    _normalize_path_values(config)
     
     # Validate required fields
     required_fields = [
