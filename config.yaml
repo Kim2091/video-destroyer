@@ -1,7 +1,6 @@
-# Use forward slashes or double backslashes for Windows paths
 # Input can be either a single video file or a folder containing multiple videos
 # The system will auto-detect which mode to use
-input: "C:/Users/mystery/Pictures/Datasets/video-destroyer/picnic.mkv"
+input: "input.mp4"
 video_extensions: [".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv"]  # Used when input is a folder
 
 chunks_directory: "chunks"  # Will contain HR and LR subfolders (or per-video subfolders when processing folder)
@@ -150,7 +149,7 @@ degradations:
 # Frame extraction settings
 frame_extraction:
   auto_extract_frames: true  # Automatically extract frames after video processing completes
-  output_directory: "frames_bf6_bink"  # Directory to save extracted frames
+  output_directory: "frames"  # Directory to save extracted frames
   sequence_length: 5  # Number of frames in each sequence
   
   # Extraction mode (mutually exclusive - only one mode is active at a time):
