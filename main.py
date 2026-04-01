@@ -34,10 +34,11 @@ def get_video_files(folder_path, extensions):
         logger.error(f"Folder not found: {folder_path}")
         return video_files
     
-    # Get all files with matching extensions
-    for ext in extensions:
-        video_files.extend(folder.glob(f"*{ext}"))
-        video_files.extend(folder.glob(f"*{ext.upper()}"))  # Also check uppercase
+    # Get all files with matching extensions (case-insensitive)
+    extensions_lower = {ext.lower() for ext in extensions}
+    for f in folder.iterdir():
+        if f.is_file() and f.suffix.lower() in extensions_lower:
+            video_files.append(f)
     
     return sorted([str(f) for f in video_files])
 
