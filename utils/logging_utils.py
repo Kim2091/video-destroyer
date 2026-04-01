@@ -4,8 +4,6 @@ import json
 from datetime import datetime
 from typing import Dict, Any
 
-class DegradationLogger:
-    """Handles logging of degradation information"""
     
 class DegradationLogger:
     """Handles logging of degradation information"""

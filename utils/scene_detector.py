@@ -100,17 +100,7 @@ class SceneDetector:
         
         except Exception as e:
             logger.error(f"Error getting video info for {video_path}: {str(e)}")
-            # Return default values if probe fails
-            return {
-                'duration': 0,
-                'fps': 30,
-                'width': 1920,
-                'height': 1080,
-                'pix_fmt': 'yuv420p',
-                'color_transfer': '',
-                'color_space': '',
-                'color_primaries': ''
-            }
+            raise
     
     def detect_scenes(self, video_path: str):
         """
