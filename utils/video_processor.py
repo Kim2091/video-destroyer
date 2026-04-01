@@ -2,6 +2,7 @@ import logging
 import os
 import random
 import subprocess
+import tempfile
 from typing import Any, Dict, List, Tuple
 from functools import wraps
 
@@ -47,7 +48,100 @@ def check_ffmpeg_available():
 
 class VideoProcessor:
     """Handles video processing operations using FFmpeg."""
-    
+
+    # Class-level cache for detected HR encoder — persists across instances
+    # so the probe only runs once per process (not once per video in batch mode).
+    _hr_encoder_config = None
+
+    @classmethod
+    def _detect_hr_encoder(cls) -> Dict[str, Any]:
+        """Detect the best available lossless encoder for HR chunks.
+
+        Tries in order:
+          1. hevc_nvenc  yuv422p  (NVIDIA 4:2:2 — best quality/speed)
+          2. hevc_nvenc  yuv444p  (NVIDIA 4:4:4 — some GPUs lack 4:2:2)
+          3. ffv1        yuv422p  (software lossless — universal fallback)
+
+        The result is cached at class level so detection only runs once.
+        """
+        if cls._hr_encoder_config is not None:
+            return cls._hr_encoder_config
+
+        candidates = [
+            {
+                'name': 'hevc_nvenc yuv422p',
+                'codec': 'hevc_nvenc',
+                'pix_fmt': 'yuv422p',
+                'extension': '.mp4',
+            },
+            {
+                'name': 'hevc_nvenc yuv444p',
+                'codec': 'hevc_nvenc',
+                'pix_fmt': 'yuv444p',
+                'extension': '.mp4',
+            },
+            {
+                'name': 'ffv1 yuv422p',
+                'codec': 'ffv1',
+                'pix_fmt': 'yuv422p',
+                'extension': '.mkv',
+            },
+        ]
+
+        for candidate in candidates:
+            tmp_path = None
+            try:
+                # Create a temp file with the right extension
+                fd, tmp_path = tempfile.mkstemp(suffix=candidate['extension'])
+                os.close(fd)
+
+                test_cmd = [
+                    'ffmpeg', '-y',
+                    '-hide_banner', '-loglevel', 'error',
+                    '-f', 'lavfi', '-i', 'color=black:s=64x64:d=0.04',
+                    '-frames:v', '1',
+                    '-c:v', candidate['codec'],
+                    '-pix_fmt', candidate['pix_fmt'],
+                ]
+
+                # Add codec-specific flags needed for the test
+                if candidate['codec'] == 'hevc_nvenc':
+                    test_cmd.extend(['-tune', 'lossless', '-qp', '0'])
+                elif candidate['codec'] == 'ffv1':
+                    test_cmd.extend(['-level', '3', '-slicecrc', '1'])
+
+                test_cmd.append(tmp_path)
+
+                result = subprocess.run(
+                    test_cmd, capture_output=True, timeout=15
+                )
+
+                if result.returncode == 0:
+                    logger.info(f"HR chunk encoder: {candidate['name']}")
+                    cls._hr_encoder_config = candidate
+                    return candidate
+                else:
+                    logger.debug(
+                        f"Encoder test failed for {candidate['name']}: "
+                        f"{result.stderr.decode('utf-8', errors='replace').strip()}"
+                    )
+
+            except subprocess.TimeoutExpired:
+                logger.debug(f"Encoder test timed out for {candidate['name']}")
+            except Exception as e:
+                logger.debug(f"Encoder test error for {candidate['name']}: {e}")
+            finally:
+                if tmp_path:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+
+        # Should never happen since ffv1 is software-only
+        raise RuntimeError(
+            "No suitable lossless encoder found (hevc_nvenc and ffv1 all failed)"
+        )
+
     def __init__(self, config: Dict[str, Any], codec_handler, scene_detector=None):
         """Initialize the video processor with configuration"""
         if not check_ffmpeg_available():
@@ -106,7 +200,10 @@ class VideoProcessor:
         self._setup_directories()
         self._setup_degradations(config)
         self.video_info = self.scene_detector.get_video_info(self.input_path)
-        
+
+        # Detect best available lossless encoder for HR chunks (cached across instances)
+        self.hr_encoder = self._detect_hr_encoder()
+
         # Find the last chunk number to continue numbering
         self.chunk_offset = self._get_last_chunk_number()
         if self.chunk_offset > 0:
@@ -185,6 +282,8 @@ class VideoProcessor:
         duration = (end_frame - start_frame) / self.video_info['fps']
         seek_offset = max(0, start_time - 2)
         
+        encoder = self.hr_encoder
+
         ffmpeg_cmd = [
             'ffmpeg', '-y',
             '-hide_banner',
@@ -194,14 +293,21 @@ class VideoProcessor:
             '-i', self.input_path,
             '-ss', str(start_time - seek_offset),
             '-t', str(duration),
-            '-c:v', 'hevc_nvenc',
-            '-preset', self.split_preset,
-            '-tune', 'lossless',
-            '-qp', '0',
-            '-pix_fmt', 'yuv422p',
+            '-c:v', encoder['codec'],
+            '-pix_fmt', encoder['pix_fmt'],
             '-fps_mode', 'cfr',
             '-colorspace', 'bt709'
         ]
+
+        # Add encoder-specific flags
+        if encoder['codec'] == 'hevc_nvenc':
+            ffmpeg_cmd.extend([
+                '-preset', self.split_preset,
+                '-tune', 'lossless',
+                '-qp', '0',
+            ])
+        elif encoder['codec'] == 'ffv1':
+            ffmpeg_cmd.extend(['-level', '3', '-slicecrc', '1'])
         
         # Build filter chain
         filters = []
@@ -258,7 +364,8 @@ class VideoProcessor:
     def _process_chunk_range(self, start_frame: int, end_frame: int, chunk_number: int) -> str:
         """Process a range of frames into a chunk"""
         actual_chunk_number = self.chunk_offset + chunk_number
-        output_file = os.path.join(self.hr_directory, f'chunk_{actual_chunk_number:04d}.mp4')
+        ext = self.hr_encoder['extension']
+        output_file = os.path.join(self.hr_directory, f'chunk_{actual_chunk_number:04d}{ext}')
         ffmpeg_cmd = self._create_ffmpeg_split_command(start_frame, end_frame, output_file)
 
         logger.debug(f"Splitting chunk {actual_chunk_number}: {output_file} (frames {start_frame}-{end_frame})")

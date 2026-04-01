@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 class BlurDegradation(BaseDegradation):
     """Applies various blur effects to videos using FFmpeg filters"""
     
-    # Define available blur types and their parameter ranges
-    BLUR_TYPES = {
+    # Define available blur types and their default parameter ranges
+    DEFAULT_BLUR_TYPES = {
         'gaussian': {
             'sigma_range': (1.0, 5.0),
             'steps_range': (1, 3)  # Multiple passes for stronger effect
@@ -23,16 +23,20 @@ class BlurDegradation(BaseDegradation):
             'angle_range': (0, 360)  # Angle of motion blur
         }
     }
-    
+
     def __init__(self, config: Dict[str, Any], logger=None):
         super().__init__(config, logger)
         self.params = config.get('params', {})
-        
+
+        # Deep copy defaults into instance variable to avoid mutating class state
+        import copy
+        self.blur_types = copy.deepcopy(self.DEFAULT_BLUR_TYPES)
+
         # Get enabled blur types from config or use all by default
-        self.enabled_blur_types = self.params.get('enabled_types', list(self.BLUR_TYPES.keys()))
-        
+        self.enabled_blur_types = self.params.get('enabled_types', list(self.blur_types.keys()))
+
         # Override default ranges with config values if provided
-        for blur_type, ranges in self.BLUR_TYPES.items():
+        for blur_type, ranges in self.blur_types.items():
             # Check if this blur type has a nested config
             if blur_type in self.params:
                 blur_config = self.params[blur_type]
@@ -41,7 +45,7 @@ class BlurDegradation(BaseDegradation):
                     for param, default_range in ranges.items():
                         if param in blur_config:
                             ranges[param] = blur_config[param]
-        
+
         # Store selected parameters for logging
         self.selected_params = {}
         
@@ -68,11 +72,11 @@ class BlurDegradation(BaseDegradation):
         filters = [f"gblur=sigma={sigma:.2f}" for _ in range(steps)]
         return ','.join(filters)
     
-    def _get_box_blur_filter(self, radius: int, power: int) -> str:
+    def _get_box_blur_filter(self, radius: float, power: int) -> str:
         """Generate box blur filter string"""
         # Chain multiple boxblur filters for power
         filters = [
-            f"boxblur=luma_radius={radius}:luma_power=1:chroma_radius={radius}:chroma_power=1"
+            f"boxblur=luma_radius={radius:.2f}:luma_power=1:chroma_radius={radius:.2f}:chroma_power=1"
             for _ in range(power)
         ]
         return ','.join(filters)
@@ -108,7 +112,7 @@ class BlurDegradation(BaseDegradation):
         blur_type = random.choice(self.enabled_blur_types)
         
         # Get parameter ranges for selected blur type
-        params = self.BLUR_TYPES[blur_type]
+        params = self.blur_types[blur_type]
         
         if blur_type == 'gaussian':
             sigma = random.uniform(*params['sigma_range'])
@@ -123,8 +127,8 @@ class BlurDegradation(BaseDegradation):
             return self._get_gaussian_blur_filter(sigma, steps)
             
         elif blur_type == 'box':
-            radius = random.randint(*params['radius_range'])
-            power = random.randint(*params['power_range'])
+            radius = random.uniform(*params['radius_range'])
+            power = random.randint(int(params['power_range'][0]), int(params['power_range'][1]))
             
             self.selected_params = {
                 'type': 'box',

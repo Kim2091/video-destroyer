@@ -74,16 +74,36 @@ class DegradationPipeline:
         
         # Start building the ffmpeg command
         input_stream = ffmpeg.input(input_path)
-        
+
         # Apply all filter expressions in one complex filter if we have any
         if filter_expressions:
-            # Join all filter expressions with commas
-            complex_filter = ','.join(filter_expressions)
-            logger.debug(f"Applied filter chain: {complex_filter}")
-            
-            # Use the complex_filter parameter in the output directly
-            # instead of calling filter_complex() on the stream
-            output_args = {'filter_complex': complex_filter}
+            # Separate simple filters (no ';') from complex filter graphs (contain ';')
+            simple_filters = []
+            complex_filters = []
+            for expr in filter_expressions:
+                if ';' in expr:
+                    complex_filters.append(expr)
+                else:
+                    simple_filters.append(expr)
+
+            if complex_filters:
+                # Build a unified complex filter graph
+                # Chain simple filters as a prefix to the first complex graph's input
+                if simple_filters:
+                    simple_chain = ','.join(simple_filters)
+                    # Prepend simple filters before the first complex graph
+                    # by connecting them to its input
+                    complex_filter = simple_chain + ',' + ';'.join(complex_filters)
+                else:
+                    complex_filter = ';'.join(complex_filters)
+
+                logger.debug(f"Applied complex filter graph: {complex_filter}")
+                output_args = {'filter_complex': complex_filter}
+            else:
+                # All filters are simple, join with commas as a linear chain
+                complex_filter = ','.join(simple_filters)
+                logger.debug(f"Applied filter chain: {complex_filter}")
+                output_args = {'filter_complex': complex_filter}
         else:
             output_args = {}
         
@@ -112,8 +132,11 @@ class DegradationPipeline:
                 )
         
         # Create the final output with all parameters
-        stream = ffmpeg.output(input_stream, output_path, **output_args)
-        
+        stream = (
+            ffmpeg.output(input_stream, output_path, **output_args)
+            .global_args('-hide_banner', '-loglevel', 'error')
+        )
+
         # Run the pipeline with detailed error logging
         try:
             stream.overwrite_output().run(capture_stdout=True, capture_stderr=True)

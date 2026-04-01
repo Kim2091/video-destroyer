@@ -80,12 +80,16 @@ class NoiseDegradation(BaseDegradation):
         self.selected_params = params
         
         # Build the noise filter string
-        # Use frame-based expressions for seeds to ensure per-frame randomization
+        # Generate random seeds in Python (FFmpeg seed params expect plain integers)
+        c0_seed = random.randint(0, 2**31 - 1)
+        c1_seed = random.randint(0, 2**31 - 1)
+        c2_seed = random.randint(0, 2**31 - 1)
+        all_seed = random.randint(0, 2**31 - 1)
         filter_expr = (
-            f"noise=c0_seed=random(1)*100000:c0_strength={params['y_strength']}:"
-            f"c1_seed=random(2)*100000:c1_strength={params['uv_strength']}:"
-            f"c2_seed=random(3)*100000:c2_strength={params['uv_strength']}:"
-            f"all_seed=random(4)*100000:allf={params['type']}"
+            f"noise=c0_seed={c0_seed}:c0_strength={params['y_strength']:.2f}:"
+            f"c1_seed={c1_seed}:c1_strength={params['uv_strength']:.2f}:"
+            f"c2_seed={c2_seed}:c2_strength={params['uv_strength']:.2f}:"
+            f"all_seed={all_seed}:allf={params['type']}"
         )
             
         return filter_expr

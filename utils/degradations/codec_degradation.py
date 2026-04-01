@@ -52,13 +52,12 @@ class CodecDegradation(BaseDegradation):
             "preset": preset
         }
         
-        # Common parameters
+        # Common parameters (output-level only; global args like loglevel
+        # and hide_banner are handled by the pipeline runner)
         common_params = {
             'fps_mode': 'cfr',
             'pix_fmt': 'yuv420p',  # Default, will be overridden if needed
             'g': 60,  # Default GOP size
-            'loglevel': 'error',
-            'hide_banner': None,
             'colorspace': 'bt709'
         }
         
@@ -94,7 +93,12 @@ class CodecDegradation(BaseDegradation):
         
         # Update GOP size based on video info if available
         if video_stream:
-            fps = float(video_stream['r_frame_rate'].split('/')[0])
+            r_frame_rate = video_stream['r_frame_rate']
+            if '/' in r_frame_rate:
+                num, den = r_frame_rate.split('/')
+                fps = float(num) / float(den) if float(den) != 0 else 30.0
+            else:
+                fps = float(r_frame_rate)
             output_params['g'] = int(fps * 2)
             output_params['pix_fmt'] = video_stream['pix_fmt']
 

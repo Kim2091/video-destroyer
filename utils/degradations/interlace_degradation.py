@@ -11,7 +11,7 @@ class InterlaceDegradation(BaseDegradation):
     def __init__(self, config: Dict[str, Any], logger=None):
         super().__init__(config, logger)
         self.params = config.get('params', {})
-        self.selected_params = self._select_interlace_params()
+        self.selected_params = {}
 
     @property
     def name(self) -> str:
@@ -59,8 +59,8 @@ class InterlaceDegradation(BaseDegradation):
         Returns:
             String containing FFmpeg filter chain for interlacing.
         """
-        if not video_info:
-            pass  # Basic tinterlace doesn't strictly need video info
+        # Select fresh random parameters for each chunk
+        self.selected_params = self._select_interlace_params()
 
         mode = self.selected_params['mode']
         field_order = self.selected_params['field_order']
