@@ -36,6 +36,10 @@ DEFAULT_CONFIG = {
     "runtime": {"workers": None, "fail_on_rejection": False},
 }
 
+#: Degrade the supplied clips as they are, without splitting them first.
+PRESPLIT_STRATEGY = "none"
+CHUNK_STRATEGIES = {"scene_detection", "duration", "frame_count", PRESPLIT_STRATEGY}
+
 _TOP_LEVEL = set(DEFAULT_CONFIG)
 _SECTIONS = {
     "extract": {"sequence_length", "mode", "frame_format", "maximum_sequences_per_pair", "gap_frames"},
@@ -92,6 +96,12 @@ def _validate(config, workflow):
             raise ConfigError("create.degradations must include a codec degradation")
         if not any(item.get("name") == "codec" for item in create["degradations"] if isinstance(item, dict)):
             raise ConfigError("create.degradations must include a codec degradation")
+        chunking = create.get("chunking") or {}
+        if not isinstance(chunking, dict):
+            raise ConfigError("create.chunking must be a mapping")
+        strategy = chunking.get("strategy", "scene_detection")
+        if strategy not in CHUNK_STRATEGIES:
+            raise ConfigError("create.chunking.strategy must be one of: " + ", ".join(sorted(CHUNK_STRATEGIES)))
 
 
 def load_config(path=None, workflow="import-pairs"):

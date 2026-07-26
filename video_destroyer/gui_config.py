@@ -62,7 +62,7 @@ def default_stages():
     ]
 
 
-def build_create_config(stages, base_config_path=None):
+def build_create_config(stages, base_config_path=None, chunking_strategy=None):
     """Build a version 2 config from GUI stages and an optional base config."""
     config = {"version": 2}
     if base_config_path:
@@ -100,12 +100,25 @@ def build_create_config(stages, base_config_path=None):
         raise ValueError("Codec encode is required")
     codec = STAGE_LIBRARY["codec"]
     pipeline.append({"name": "codec", "enabled": True, "probability": 1.0, "params": copy.deepcopy(codec["params"])})
-    config.setdefault("create", {})["degradations"] = pipeline
+    create = config.setdefault("create", {})
+    create["degradations"] = pipeline
+    if chunking_strategy:
+        create.setdefault("chunking", {})["strategy"] = chunking_strategy
     return config
 
 
-def write_temp_create_config(stages, base_config_path=None):
-    config = build_create_config(stages, base_config_path)
+def write_temp_create_config(stages, base_config_path=None, chunking_strategy=None):
+    config = build_create_config(stages, base_config_path, chunking_strategy)
     with tempfile.NamedTemporaryFile(prefix="video-destroyer-gui-", suffix=".yaml", mode="w", encoding="utf-8", delete=False) as handle:
         yaml.safe_dump(config, handle, sort_keys=False)
         return Path(handle.name)
+
+
+def write_profile(path, stages, base_config_path=None, chunking_strategy=None):
+    """Save the current pipeline as a reusable version 2 configuration."""
+    config = build_create_config(stages, base_config_path, chunking_strategy)
+    path = Path(path)
+    if not path.suffix:
+        path = path.with_suffix(".yaml")
+    path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    return path

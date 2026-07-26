@@ -7,20 +7,27 @@ numbered steps to the action button in the footer.
 import sys
 from pathlib import Path
 
-from .gui_config import STAGE_LIBRARY, default_stages, write_temp_create_config
+from .gui_config import STAGE_LIBRARY, build_create_config, default_stages, write_profile, write_temp_create_config
+from .config import PRESPLIT_STRATEGY
 
 
 WORKFLOWS = (
-    ("create", "Create", "Generate degraded clips from a source video or folder, then extract and validate frames."),
-    ("import", "Import", "Pair clips you already have. Source files are read in place and never modified."),
-    ("runs", "Existing run", "Resume interrupted work, re-validate a dataset, or rewrite its report."),
+    ("dataset", "New dataset", ""),
+    ("runs", "Open run", "Pick up a run you already started: resume it, re-validate it, or rewrite its report."),
+)
+
+#: key, button label, what the mode does, whether degradations apply.
+SOURCE_MODES = (
+    ("video", "Degrade a video", "Split your footage into clips, then generate a degraded LR clip for each one.", True),
+    ("presplit", "Degrade clips I split", "Skip splitting. Every clip you supply is degraded exactly as it is.", True),
+    ("pairs", "Use clips I have", "Your HR and LR clips both already exist, so nothing is degraded here.", False),
 )
 
 
 def main():
     try:
-        from PySide6.QtCore import QProcess, QTimer, QUrl, Qt
-        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtCore import QPointF, QProcess, QTimer, QUrl, Qt
+        from PySide6.QtGui import QColor, QDesktopServices, QPainter
         from PySide6.QtWidgets import (
             QAbstractItemView,
             QApplication,
@@ -51,6 +58,53 @@ def main():
         print("The desktop interface requires PySide6. Install it with: python -m pip install '.[gui]'", file=sys.stderr)
         return 2
 
+    class Step:
+        """A numbered step card, so pages can hide steps and renumber what is left."""
+
+        def __init__(self, card, arrow, badge):
+            self.card, self.arrow, self.badge = card, arrow, badge
+
+        def set_visible(self, visible):
+            self.card.setVisible(visible)
+            if self.arrow is not None:
+                self.arrow.setVisible(visible)
+
+        def is_visible(self):
+            return not self.card.isHidden()
+
+        def renumber(self, number, first):
+            self.badge.setText(str(number))
+            if self.arrow is not None:
+                self.arrow.setVisible(not first)
+
+    class GripHandle(QWidget):
+        """Six-dot drag affordance. Mouse events fall through to the list view."""
+
+        ACTIVE = QColor("#7d8994")
+        DIM = QColor("#3d464f")
+
+        def __init__(self):
+            super().__init__()
+            self.setFixedSize(14, 22)
+            self.setCursor(Qt.CursorShape.SizeAllCursor)
+            self.setToolTip("Drag to reorder")
+            self._color = self.ACTIVE
+
+        def set_dim(self, dim):
+            color = self.DIM if dim else self.ACTIVE
+            if color is not self._color:
+                self._color = color
+                self.update()
+
+        def paintEvent(self, _event):
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(self._color)
+            for x in (4.5, 9.5):
+                for y in (6.0, 11.0, 16.0):
+                    painter.drawEllipse(QPointF(x, y), 1.6, 1.6)
+
     class DatasetWindow(QMainWindow):
         def __init__(self):
             super().__init__()
@@ -66,7 +120,7 @@ def main():
             self._moving_codec = False
             self.setWindowTitle("Video Destroyer")
             self.setMinimumSize(880, 600)
-            self.resize(1020, 820)
+            self.resize(1020, 840)
             self._build()
 
         # ------------------------------------------------------------------ shell
@@ -81,7 +135,7 @@ def main():
 
             self.workspace = QStackedWidget()
             self.pages = {}
-            builders = {"create": self._create_page, "import": self._import_page, "runs": self._runs_page}
+            builders = {"dataset": self._dataset_page, "runs": self._runs_page}
             for name, _, description in WORKFLOWS:
                 page = builders[name](description)
                 self.pages[name] = page
@@ -90,8 +144,8 @@ def main():
             self.workspace.addWidget(self.run_page)
             layout.addWidget(self.workspace, 1)
 
-            self.return_page = self.pages["create"]
-            self._show_page("create")
+            self.return_page = self.pages["dataset"]
+            self._show_page("dataset")
             self.setCentralWidget(root)
 
         def _header(self):
@@ -148,11 +202,12 @@ def main():
             steps = QVBoxLayout(body)
             steps.setContentsMargins(24, 14, 24, 14)
             steps.setSpacing(0)
-            intro = QLabel(description)
-            intro.setObjectName("intro")
-            intro.setWordWrap(True)
-            steps.addWidget(intro)
-            steps.addSpacing(10)
+            if description:
+                intro = QLabel(description)
+                intro.setObjectName("intro")
+                intro.setWordWrap(True)
+                steps.addWidget(intro)
+                steps.addSpacing(10)
             scroll.setWidget(body)
             outer.addWidget(scroll, 1)
 
@@ -164,19 +219,21 @@ def main():
             outer.addWidget(footer)
             return page, steps, footer_layout
 
-        def _step(self, layout, number, title, hint=""):
-            """Add a numbered step card and return the layout for its contents."""
+        def _step(self, layout, number, title, hint="", actions=()):
+            """Add a numbered step card. Returns (contents_layout, Step)."""
+            arrow = None
             if number > 1:
                 arrow = QLabel("↓")
                 arrow.setObjectName("flowArrow")
                 arrow.setFixedWidth(52)
+                arrow.setFixedHeight(16)
                 arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 layout.addWidget(arrow)
 
             card = QFrame()
             card.setObjectName("step")
             outer = QHBoxLayout(card)
-            outer.setContentsMargins(14, 12, 14, 14)
+            outer.setContentsMargins(14, 10, 14, 12)
             outer.setSpacing(12)
 
             gutter = QVBoxLayout()
@@ -195,89 +252,147 @@ def main():
             heading = QLabel(title)
             heading.setObjectName("stepTitle")
             heading.setFixedHeight(24)
-            body.addWidget(heading)
+            heading_row = QHBoxLayout()
+            heading_row.setContentsMargins(0, 0, 0, 0)
+            heading_row.setSpacing(8)
+            heading_row.addWidget(heading)
+            heading_row.addStretch(1)
+            for widget in actions:
+                heading_row.addWidget(widget)
+            body.addLayout(heading_row)
             if hint:
                 body.addWidget(self._hint(hint))
             outer.addLayout(body, 1)
             layout.addWidget(card)
-            return body
+            return body, Step(card, arrow, badge)
 
         # ------------------------------------------------------------------ pages
 
-        def _create_page(self, description):
+        def _dataset_page(self, description):
             page, steps, footer = self._scaffold(description)
 
-            source = self._step(steps, 1, "Source", "The video file or folder of videos to degrade.")
-            self.create_input = QLineEdit()
-            self.create_input.setPlaceholderText("Choose a video file or a folder of videos")
-            source.addWidget(self._source_picker(self.create_input))
+            source, source_step = self._step(steps, 1, "Source", "What are you starting from?")
+            source.addWidget(self._source_mode_selector(page))
+            self.source_hint = self._hint(SOURCE_MODES[0][2])
+            source.addWidget(self.source_hint)
+            source.addWidget(self._source_inputs())
 
-            pipeline = self._step(steps, 2, "Degradations")
+            pipeline, self.pipeline_step = self._step(steps, 2, "Degradations", actions=(
+                self._ghost_button("Export profile…", self._export_profile, "Save this pipeline as a reusable YAML configuration"),
+                self._ghost_button("Reset", self._reset_pipeline, "Restore the default stages, order, and chances"),
+            ))
             pipeline.addWidget(self._pipeline_editor())
 
-            output = self._step(steps, 3, "Output", "A new run folder for the clips, frames, reports, and logs.")
-            self.create_output = QLineEdit()
-            self.create_output.setPlaceholderText("Choose an empty run folder")
-            output.addWidget(self._folder_picker(self.create_output))
+            output, output_step = self._step(steps, 3, "Output", "A new run folder for the clips, frames, reports, and logs.")
+            self.dataset_output = QLineEdit()
+            self.dataset_output.setPlaceholderText("Choose an empty run folder")
+            output.addWidget(self._folder_picker(self.dataset_output))
             advanced, advanced_layout = self._advanced_section()
-            self.create_config = QLineEdit()
-            self.create_config.setPlaceholderText("Optional base configuration (version 2 YAML)")
-            advanced_layout.addWidget(self._file_picker(self.create_config, "YAML files (*.yaml *.yml)"))
-            self.create_strict = QCheckBox("Fail the run when items are rejected")
-            advanced_layout.addWidget(self.create_strict)
+            self.dataset_config = QLineEdit()
+            self.dataset_config.setPlaceholderText("Optional base configuration (version 2 YAML)")
+            advanced_layout.addWidget(self._file_picker(self.dataset_config, "YAML files (*.yaml *.yml)"))
+            advanced_layout.addWidget(self._hint("Its other settings are kept; its degradations are replaced by the stage list above."))
+            self.dataset_strict = QCheckBox("Fail the run when items are rejected")
+            advanced_layout.addWidget(self.dataset_strict)
             output.addWidget(advanced)
 
+            self.dataset_steps = [source_step, self.pipeline_step, output_step]
             steps.addStretch(1)
             footer.addWidget(self._hint("Nothing is published until validation passes.", wrap=False))
             footer.addStretch(1)
-            footer.addWidget(self._start_button("Create dataset  →", self._start_create))
+            footer.addWidget(self._start_button("Build dataset  →", self._start_dataset))
+            self._source_mode_changed(0)
             return page
 
-        def _import_page(self, description):
-            page, steps, footer = self._scaffold(description)
+        def _source_mode_selector(self, page):
+            container = QWidget()
+            row = QHBoxLayout(container)
+            row.setContentsMargins(0, 0, 0, 0)
+            selector = QFrame()
+            selector.setObjectName("switcher")
+            row.addWidget(selector)
+            row.addStretch(1)
+            layout = QHBoxLayout(selector)
+            layout.setContentsMargins(3, 3, 3, 3)
+            layout.setSpacing(2)
+            self.source_mode = QButtonGroup(page)
+            for index, (_, label, hint, _degradable) in enumerate(SOURCE_MODES):
+                button = QPushButton(label)
+                button.setObjectName("modeButton")
+                button.setCheckable(True)
+                button.setChecked(index == 0)
+                button.setToolTip(hint)
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
+                self.source_mode.addButton(button, index)
+                layout.addWidget(button)
+            self.source_mode.idClicked.connect(self._source_mode_changed)
+            return container
 
-            clips = self._step(steps, 1, "Paired clips", "Matched by relative path without the final extension.")
+        def _source_inputs(self):
+            self.source_inputs = QStackedWidget()
+
+            video = QWidget()
+            video_layout = QVBoxLayout(video)
+            video_layout.setContentsMargins(0, 0, 0, 0)
+            self.video_input = QLineEdit()
+            self.video_input.setPlaceholderText("Choose a video file or a folder of videos")
+            video_layout.addWidget(self._source_picker(self.video_input))
+
+            presplit = QWidget()
+            presplit_layout = QVBoxLayout(presplit)
+            presplit_layout.setContentsMargins(0, 0, 0, 0)
+            self.clips_input = QLineEdit()
+            self.clips_input.setPlaceholderText("Choose the folder holding your clips")
+            presplit_layout.addWidget(self._source_picker(self.clips_input))
+
+            pairs = QWidget()
+            pairs_layout = QVBoxLayout(pairs)
+            pairs_layout.setContentsMargins(0, 0, 0, 0)
+            pairs_layout.setSpacing(8)
             self.import_hr = QLineEdit()
             self.import_hr.setPlaceholderText("Choose the HR clip folder")
-            clips.addWidget(self._captioned("HR clips", self._folder_picker(self.import_hr)))
+            pairs_layout.addWidget(self._captioned("HR clips", self._folder_picker(self.import_hr)))
             self.import_lr = QLineEdit()
             self.import_lr.setPlaceholderText("Choose the LR clip folder")
-            clips.addWidget(self._captioned("LR clips", self._folder_picker(self.import_lr)))
-
-            handling = self._step(steps, 2, "File handling", "How the run should take ownership of those clips.")
+            pairs_layout.addWidget(self._captioned("LR clips", self._folder_picker(self.import_lr)))
             self.materialize = QComboBox()
             self.materialize.addItem("Reference the source clips in place", "")
             self.materialize.addItem("Copy the clips into the run", "copy")
             self.materialize.addItem("Hardlink the clips into the run", "hardlink")
-            handling.addWidget(self.materialize)
+            pairs_layout.addWidget(self._captioned("File handling", self.materialize))
 
-            output = self._step(steps, 3, "Output", "A new run folder for the frames, reports, and logs.")
-            self.import_output = QLineEdit()
-            self.import_output.setPlaceholderText("Choose an empty run folder")
-            output.addWidget(self._folder_picker(self.import_output))
-            advanced, advanced_layout = self._advanced_section()
-            self.import_config = QLineEdit()
-            self.import_config.setPlaceholderText("Optional base configuration (version 2 YAML)")
-            advanced_layout.addWidget(self._file_picker(self.import_config, "YAML files (*.yaml *.yml)"))
-            self.import_strict = QCheckBox("Fail the run when items are rejected")
-            advanced_layout.addWidget(self.import_strict)
-            output.addWidget(advanced)
+            for widget in (video, presplit, pairs):
+                self.source_inputs.addWidget(widget)
+            return self.source_inputs
 
-            steps.addStretch(1)
-            footer.addWidget(self._hint("Source clips are only ever read.", wrap=False))
-            footer.addStretch(1)
-            footer.addWidget(self._start_button("Import and build  →", self._start_import))
-            return page
+        def _source_mode_changed(self, index):
+            _key, _label, hint, degradable = SOURCE_MODES[index]
+            self.source_hint.setText(hint)
+            self.source_inputs.setCurrentIndex(index)
+            self.source_inputs.setFixedHeight(self.source_inputs.currentWidget().sizeHint().height())
+            self.pipeline_step.set_visible(degradable)
+            self._renumber_steps()
+
+        def _renumber_steps(self):
+            number = 0
+            for step in self.dataset_steps:
+                if not step.is_visible():
+                    continue
+                number += 1
+                step.renumber(number, number == 1)
+
+        def _source_key(self):
+            return SOURCE_MODES[self.source_mode.checkedId()][0]
 
         def _runs_page(self, description):
             page, steps, footer = self._scaffold(description)
 
-            target = self._step(steps, 1, "Run folder", "A folder created by an earlier create or import run.")
+            target, _ = self._step(steps, 1, "Run folder", "A folder an earlier dataset run created.")
             self.existing_run = QLineEdit()
             self.existing_run.setPlaceholderText("Choose an existing run folder")
             target.addWidget(self._folder_picker(self.existing_run))
 
-            action = self._step(steps, 2, "Action", "Pick what to do with that run.")
+            action, _ = self._step(steps, 2, "Action", "Pick what to do with that run.")
             self.run_action = QButtonGroup(page)
             for index, (label, command, hint) in enumerate((
                 ("Resume", "resume", "Continue an interrupted run from its saved state."),
@@ -382,7 +497,7 @@ def main():
             columns.setSpacing(8)
             stage_caption = QLabel("Stage — drag to reorder, runs top to bottom")
             stage_caption.setObjectName("caption")
-            stage_caption.setIndent(38)
+            stage_caption.setIndent(42)
             chance_caption = QLabel("Chance")
             chance_caption.setObjectName("caption")
             chance_caption.setFixedWidth(74)
@@ -422,7 +537,7 @@ def main():
 
             row = QFrame()
             row.setObjectName("stageRowLocked" if locked else "stageRow")
-            row.setFixedHeight(34)
+            row.setFixedHeight(32)
             layout = QHBoxLayout(row)
             layout.setContentsMargins(8, 0, 8, 0)
             layout.setSpacing(8)
@@ -431,10 +546,12 @@ def main():
             badge.setObjectName("stageNumber")
             badge.setFixedSize(20, 20)
             badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            handle = QLabel("" if locked else "≡")
-            handle.setObjectName("stageHandle")
-            handle.setFixedWidth(10)
-            handle.setToolTip("Always runs last" if locked else "Drag to reorder")
+            if locked:
+                handle = QWidget()
+                handle.setFixedSize(14, 22)
+                handle.setToolTip("Always runs last")
+            else:
+                handle = GripHandle()
 
             enabled = QCheckBox(definition["title"])
             enabled.setChecked(stage["enabled"])
@@ -460,7 +577,7 @@ def main():
             layout.addWidget(description, 1)
             layout.addWidget(probability)
 
-            self.stage_rows[name] = {"row": row, "badge": badge, "enabled": enabled, "probability": probability}
+            self.stage_rows[name] = {"row": row, "badge": badge, "handle": handle, "enabled": enabled, "probability": probability}
             enabled.toggled.connect(lambda checked, stage_name=name: self._stage_toggled(stage_name, checked))
             item.setSizeHint(row.sizeHint())
             self.pipeline.addItem(item)
@@ -473,6 +590,8 @@ def main():
                 widget.setProperty("off", not checked)
                 widget.style().unpolish(widget)
                 widget.style().polish(widget)
+            if isinstance(widgets["handle"], GripHandle):
+                widgets["handle"].set_dim(not checked)
             self._update_pipeline_summary()
 
         def _keep_codec_last(self, *_):
@@ -489,6 +608,37 @@ def main():
                     self._moving_codec = False
                     break
             self._renumber_pipeline()
+
+        def _reset_pipeline(self):
+            self.pipeline.clear()
+            self.stage_rows.clear()
+            for stage in default_stages():
+                self._add_pipeline_stage(stage)
+            self._fit_pipeline_height()
+            self._renumber_pipeline()
+            self._flash_pipeline_note("Pipeline reset to defaults.")
+
+        def _export_profile(self):
+            base = self.dataset_config.text().strip() or None
+            try:
+                build_create_config(self._pipeline_stages(), base, self._chunking_strategy())
+            except ValueError as error:
+                QMessageBox.warning(self, "Export profile", str(error))
+                return
+            start = Path(self.dataset_output.text().strip() or Path.home()) / "video-destroyer-profile.yaml"
+            selected, _ = QFileDialog.getSaveFileName(self, "Export profile", str(start), "YAML files (*.yaml *.yml)")
+            if not selected:
+                return
+            try:
+                written = write_profile(selected, self._pipeline_stages(), base, self._chunking_strategy())
+            except (OSError, ValueError) as error:
+                QMessageBox.warning(self, "Export profile", f"Could not write the profile: {error}")
+                return
+            self._flash_pipeline_note(f"Profile saved to {written}")
+
+        def _flash_pipeline_note(self, text):
+            self.pipeline_summary.setText(text)
+            QTimer.singleShot(5000, self._update_pipeline_summary)
 
         def _fit_pipeline_height(self):
             last = self.pipeline.item(self.pipeline.count() - 1)
@@ -588,6 +738,15 @@ def main():
         def _file_picker(self, field, filter_text):
             return self._picker_row(field, [("Browse", lambda: self._choose_file(field, filter_text))])
 
+        def _ghost_button(self, text, callback, tooltip=""):
+            button = QPushButton(text)
+            button.setObjectName("ghostButton")
+            button.setFixedHeight(24)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setToolTip(tooltip)
+            button.clicked.connect(callback)
+            return button
+
         def _start_button(self, text, callback, primary=True):
             button = QPushButton(text)
             button.setObjectName("primaryButton" if primary else "secondaryButton")
@@ -608,43 +767,43 @@ def main():
 
         # ------------------------------------------------------------------- runs
 
-        def _start_create(self):
-            source, output = self.create_input.text().strip(), self.create_output.text().strip()
-            if not self._require_paths(source, output):
-                return
-            self._cleanup_generated_config()
-            try:
-                self.generated_config = write_temp_create_config(self._pipeline_stages(), self.create_config.text().strip() or None)
-            except ValueError as error:
-                QMessageBox.warning(self, "Pipeline configuration", str(error))
-                return
-            arguments = ["create", source, "--output", output, "--config", str(self.generated_config)]
-            if self.create_strict.isChecked():
+        def _start_dataset(self):
+            output = self.dataset_output.text().strip()
+            base = self.dataset_config.text().strip() or None
+            mode = self._source_key()
+            if mode == "pairs":
+                hr, lr = self.import_hr.text().strip(), self.import_lr.text().strip()
+                if not self._require_paths(hr, lr, output):
+                    return
+                arguments = ["import-pairs", "--hr", hr, "--lr", lr, "--output", output]
+                materialize = self.materialize.currentData()
+                if materialize:
+                    arguments.extend(["--materialize", materialize])
+                if base:
+                    arguments.extend(["--config", base])
+            else:
+                source = (self.video_input if mode == "video" else self.clips_input).text().strip()
+                if not self._require_paths(source, output):
+                    return
+                self._cleanup_generated_config()
+                try:
+                    self.generated_config = write_temp_create_config(self._pipeline_stages(), base, self._chunking_strategy())
+                except ValueError as error:
+                    QMessageBox.warning(self, "Pipeline configuration", str(error))
+                    return
+                arguments = ["create", source, "--output", output, "--config", str(self.generated_config)]
+            if self.dataset_strict.isChecked():
                 arguments.append("--fail-on-rejection")
             self._run(arguments, output)
 
-        def _start_import(self):
-            hr, lr, output = self.import_hr.text().strip(), self.import_lr.text().strip(), self.import_output.text().strip()
-            if not self._require_paths(hr, lr, output):
-                return
-            arguments = ["import-pairs", "--hr", hr, "--lr", lr, "--output", output]
-            materialize = self.materialize.currentData()
-            if materialize:
-                arguments.extend(["--materialize", materialize])
-            self._append_optional(arguments, self.import_config.text(), self.import_strict.isChecked())
-            self._run(arguments, output)
+        def _chunking_strategy(self):
+            return PRESPLIT_STRATEGY if self._source_key() == "presplit" else None
 
         def _start_existing(self, command):
             run = self.existing_run.text().strip()
             if not self._require_paths(run):
                 return
             self._run([command, run], run)
-
-        def _append_optional(self, arguments, config, strict):
-            if config.strip():
-                arguments.extend(["--config", config.strip()])
-            if strict:
-                arguments.append("--fail-on-rejection")
 
         def _require_paths(self, *values):
             if any(not value for value in values):
@@ -776,6 +935,9 @@ def _stylesheet():
         QPushButton#secondaryButton { padding: 8px 18px; font-weight: 600; }
         QPushButton#dangerButton { color: #e08b7d; border-color: #4a3330; }
         QPushButton#dangerButton:hover { background: #3a2724; border-color: #6b4640; }
+        QPushButton#ghostButton { background: transparent; border: 1px solid #333d46; border-radius: 5px; color: #8d99a4; padding: 2px 12px; font-size: 12px; }
+        QPushButton#ghostButton:hover { background: #232a31; border-color: #4a545e; color: #e6eaee; }
+        QPushButton#ghostButton:pressed { background: #1b2127; }
         QToolButton#advancedToggle { color: #8d99a4; background: transparent; border: none; padding: 2px 0; font-size: 12px; }
         QToolButton#advancedToggle:hover { color: #d3dae0; }
 
@@ -805,7 +967,6 @@ def _stylesheet():
         QFrame#stageRowLocked { background: #1a1f25; border: 1px solid #262d34; border-left: 2px solid #d8a657; border-radius: 5px; }
         QLabel#stageNumber { background: #2b333b; color: #d8a657; border-radius: 10px; font-size: 11px; font-weight: 700; }
         QLabel#stageNumber[off="true"] { background: #1f252b; color: #5a646d; }
-        QLabel#stageHandle { color: #5c6873; font-size: 14px; }
         QLabel#stageDescription { color: #6f7a85; font-size: 11px; }
         QDoubleSpinBox[off="true"] { color: #5a646d; }
         QDoubleSpinBox { padding: 3px 4px; }

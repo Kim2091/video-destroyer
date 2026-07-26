@@ -166,3 +166,103 @@ extract:
             result = self._run("create", str(source), "--output", str(run), "--config", str(config))
             self.assertEqual(0, result.returncode, result.stderr)
             self.assertTrue(any((run / "dataset" / "hr").glob("*.png")))
+
+    def _presplit_config(self, path):
+        path.write_text(
+            """version: 2
+create:
+  chunking:
+    strategy: none
+  degradations:
+    - name: resize
+      probability: 1.0
+      params:
+        fixed_scale: 0.5
+    - name: codec
+      probability: 1.0
+      params:
+        h264:
+          probability: 1.0
+          quality_range: [28, 28]
+          presets: [ultrafast]
+extract:
+  sequence_length: 2
+""",
+            encoding="utf-8",
+        )
+        return path
+
+    def test_create_degrades_presplit_clips_without_splitting_them(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            clips = root / "clips"
+            (clips / "show").mkdir(parents=True)
+            make_video(clips / "show" / "a.mkv")
+            make_video(clips / "b.mp4")
+            untouched = (clips / "b.mp4").read_bytes()
+            run = root / "run"
+
+            result = self._run("create", str(clips), "--output", str(run),
+                               "--config", str(self._presplit_config(root / "presplit.yaml")))
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            # One HR/LR pair per supplied clip: the clips are never re-split.
+            pairs = [json.loads(line) for line in (run / "pairs.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+            self.assertEqual(["b", "show/a"], sorted(pair["key"] for pair in pairs))
+            self.assertTrue(all(pair["status"] == "validated" for pair in pairs), pairs)
+            # HR is read in place; only the LR side is generated into the run.
+            self.assertEqual(untouched, (clips / "b.mp4").read_bytes())
+            self.assertTrue((run / ".work" / "clips" / "presplit" / "lr" / "b.mkv").is_file())
+            self.assertTrue((run / ".work" / "clips" / "presplit" / "lr" / "show" / "a.mkv").is_file())
+            self.assertTrue(any((run / "dataset" / "hr").glob("*.png")))
+            self.assertEqual(
+                sorted(path.name for path in (run / "dataset" / "hr").glob("*.png")),
+                sorted(path.name for path in (run / "dataset" / "lr").glob("*.png")),
+            )
+            state = json.loads((run / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual("completed", state["status"])
+
+    def test_presplit_run_resumes_from_its_recorded_inputs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            clips = root / "clips"
+            clips.mkdir()
+            make_video(clips / "a.mp4")
+            run = root / "run"
+            self.assertEqual(0, self._run("create", str(clips), "--output", str(run),
+                                          "--config", str(self._presplit_config(root / "presplit.yaml"))).returncode)
+
+            result = self._run("resume", str(run))
+
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertTrue(any((run / "dataset" / "hr").glob("*.png")))
+
+    def test_clips_differing_only_by_extension_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            clips = root / "clips"
+            clips.mkdir()
+            make_video(clips / "scene.mp4")
+            make_video(clips / "scene.mkv")
+
+            result = self._run("create", str(clips), "--output", str(root / "run"),
+                               "--config", str(self._presplit_config(root / "presplit.yaml")))
+
+            self.assertEqual(1, result.returncode)
+            self.assertIn("differ only by extension", result.stdout + result.stderr)
+
+    def test_unknown_chunking_strategy_is_a_configuration_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            config = root / "bad.yaml"
+            config.write_text(
+                "version: 2\ncreate:\n  chunking:\n    strategy: nope\n"
+                "  degradations:\n    - name: codec\n      params:\n        h264: {probability: 1.0}\n",
+                encoding="utf-8",
+            )
+            source = make_video(root / "source.mp4")
+
+            result = self._run("create", str(source), "--output", str(root / "run"), "--config", str(config))
+
+            self.assertEqual(2, result.returncode)
+            self.assertIn("create.chunking.strategy", result.stderr)

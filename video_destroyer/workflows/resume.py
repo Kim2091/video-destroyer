@@ -1,7 +1,7 @@
 from ..run_store import RunStore
+from ..pairing import discover_import_pairs
 from .common import run_dataset_workflow
-from .create import discover_generated_pairs
-from .import_pairs import discover_import_pairs
+from .create import discover as discover_created
 
 
 def start(run):
@@ -11,7 +11,7 @@ def start(run):
         inputs = store.run["inputs"]
         discover = lambda: discover_import_pairs(inputs["hr_root"], inputs["lr_root"], inputs.get("materialize"), store.root)
     elif store.run["workflow"] == "create":
-        discover = lambda: discover_generated_pairs(store)
+        discover = lambda: discover_created(store)
     else:
         raise ValueError(f"Unknown workflow in run metadata: {store.run['workflow']}")
     return run_dataset_workflow(store, discover)

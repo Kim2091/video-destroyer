@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import os
 import tempfile
 import unittest
@@ -37,12 +38,13 @@ class GuiIntegrationTests(unittest.TestCase):
 
             def exercise():
                 nonlocal window
-                window = next(widget for widget in self.application.topLevelWidgets() if isinstance(widget, QMainWindow))
+                window = next(widget for widget in self.application.topLevelWidgets() if isinstance(widget, QMainWindow) and widget.isVisible())
+                window.source_mode.button(2).click()
                 window.import_hr.setText(str(hr))
                 window.import_lr.setText(str(lr))
-                window.import_output.setText(str(output))
+                window.dataset_output.setText(str(output))
                 window.process.finished.connect(finished)
-                window._start_import()
+                window._start_dataset()
 
             def finished(exit_code, _exit_status):
                 result["exit_code"] = exit_code
@@ -82,11 +84,11 @@ class GuiIntegrationTests(unittest.TestCase):
             def exercise():
                 nonlocal window
                 window = next(widget for widget in self.application.topLevelWidgets() if isinstance(widget, QMainWindow) and widget.isVisible())
-                window.create_input.setText(str(source))
-                window.create_output.setText(str(output))
-                window.create_config.setText(str(base))
+                window.video_input.setText(str(source))
+                window.dataset_output.setText(str(output))
+                window.dataset_config.setText(str(base))
                 window.process.finished.connect(finished)
-                window._start_create()
+                window._start_dataset()
 
             def finished(exit_code, _exit_status):
                 result["exit_code"] = exit_code
@@ -101,3 +103,70 @@ class GuiIntegrationTests(unittest.TestCase):
             resolved = yaml.safe_load((output / "run.yaml").read_text(encoding="utf-8"))
             self.assertEqual(["resize", "noise", "halo", "blur", "ghosting", "codec"], [stage["name"] for stage in resolved["config"]["create"]["degradations"]])
             self.assertTrue((output / "dataset" / "hr").is_dir())
+
+    def test_presplit_mode_degrades_the_supplied_clips_without_splitting(self):
+        from video_destroyer import gui
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            clips, output, base = root / "clips", root / "run", root / "base.yaml"
+            clips.mkdir()
+            make_video(clips / "a.mp4")
+            make_video(clips / "b.mp4")
+            base.write_text("version: 2\nextract:\n  sequence_length: 2\n", encoding="utf-8")
+            result = {}
+            window = None
+
+            def exercise():
+                nonlocal window
+                window = next(widget for widget in self.application.topLevelWidgets() if isinstance(widget, QMainWindow) and widget.isVisible())
+                window.source_mode.button(1).click()
+                window.clips_input.setText(str(clips))
+                window.dataset_output.setText(str(output))
+                window.dataset_config.setText(str(base))
+                window.process.finished.connect(finished)
+                window._start_dataset()
+
+            def finished(exit_code, _exit_status):
+                result["exit_code"] = exit_code
+                QTimer.singleShot(0, self.application.quit)
+
+            QTimer.singleShot(0, exercise)
+            QTimer.singleShot(60000, self.application.quit)
+            self.assertEqual(0, gui.main())
+            if window is not None:
+                window.close()
+            self.assertEqual(0, result.get("exit_code"))
+            resolved = yaml.safe_load((output / "run.yaml").read_text(encoding="utf-8"))
+            self.assertEqual("none", resolved["config"]["create"]["chunking"]["strategy"])
+            # One pair per supplied clip proves the clips were not re-split.
+            keys = sorted(json.loads(line)["key"] for line in (output / "pairs.jsonl").read_text(encoding="utf-8").splitlines() if line.strip())
+            self.assertEqual(["a", "b"], keys)
+            self.assertTrue((output / "dataset" / "hr").is_dir())
+
+    def test_degradations_step_is_hidden_and_steps_renumber_for_existing_pairs(self):
+        from video_destroyer import gui
+
+        window = None
+
+        def exercise():
+            nonlocal window
+            window = next(widget for widget in self.application.topLevelWidgets() if isinstance(widget, QMainWindow) and widget.isVisible())
+            source, pipeline, output = window.dataset_steps
+            self.assertTrue(pipeline.is_visible())
+            self.assertEqual(["1", "2", "3"], [step.badge.text() for step in window.dataset_steps])
+
+            window.source_mode.button(2).click()          # clips I already have
+            self.assertFalse(pipeline.is_visible())
+            # Output takes the vacated number so the flow stays 1, 2.
+            self.assertEqual(["1", "2"], [source.badge.text(), output.badge.text()])
+
+            window.source_mode.button(1).click()          # back to a degrading mode
+            self.assertTrue(pipeline.is_visible())
+            self.assertEqual(["1", "2", "3"], [step.badge.text() for step in window.dataset_steps])
+            self.application.quit()
+
+        QTimer.singleShot(0, exercise)
+        self.assertEqual(0, gui.main())
+        if window is not None:
+            window.close()
