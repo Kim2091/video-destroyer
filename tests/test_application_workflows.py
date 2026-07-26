@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from tests.helpers import ROOT, make_video
+from tests.helpers import ROOT, make_cut_video, make_video
 from video_destroyer.cli import build_parser
 from video_destroyer.pairing import PairingError, discover_import_pairs
 
@@ -40,6 +40,36 @@ class ImportWorkflowIntegrationTests(unittest.TestCase):
             state = json.loads((run / "state.json").read_text(encoding="utf-8"))
             self.assertEqual("completed", state["status"])
             self.assertTrue((run / "reports" / "dataset-validation.json").is_file())
+
+    def test_report_states_the_recorded_validation_rather_than_claiming_a_pass(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            hr, lr = root / "hr", root / "lr"
+            hr.mkdir()
+            lr.mkdir()
+            make_video(hr / "clip.mp4")
+            make_video(lr / "clip.mp4")
+            run = root / "run"
+            self.assertEqual(0, self._run("import-pairs", "--hr", str(hr), "--lr", str(lr), "--output", str(run)).returncode)
+
+            passing = self._run("report", str(run))
+            self.assertEqual(0, passing.returncode, passing.stderr)
+            self.assertIn("Validation: passed (recorded)", passing.stdout)
+
+            # report only rewrites the summary, so a dataset broken afterwards must
+            # not be reported as validated.
+            (run / "reports" / "dataset-validation.json").write_text(
+                '{"passed": false, "errors": ["HR and LR dataset filenames differ"]}', encoding="utf-8")
+
+            failing = self._run("report", str(run))
+            self.assertEqual(0, failing.returncode, failing.stderr)
+            self.assertIn("Validation: failed (recorded)", failing.stdout)
+            self.assertIn("Dataset not ready", failing.stdout)
+            self.assertIn("HR and LR dataset filenames differ", (run / "reports" / "summary.txt").read_text(encoding="utf-8"))
+
+            (run / "reports" / "dataset-validation.json").unlink()
+            unchecked = self._run("report", str(run))
+            self.assertIn("Validation: not checked", unchecked.stdout)
 
     def test_copy_materialization_is_run_owned_and_existing_output_is_refused(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -165,6 +195,20 @@ extract:
             run = root / "run"
             result = self._run("create", str(source), "--output", str(run), "--config", str(config))
             self.assertEqual(0, result.returncode, result.stderr)
+            self.assertTrue(any((run / "dataset" / "hr").glob("*.png")))
+
+    def test_create_uses_scene_detection_when_no_configuration_is_supplied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = make_cut_video(root / "source.mp4")
+            run = root / "run"
+
+            # No --config at all, so this exercises the shipped defaults, including
+            # chunking.strategy: scene_detection and an unset downscale factor.
+            result = self._run("create", str(source), "--output", str(run))
+
+            self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+            self.assertNotIn("Downscale factor", result.stdout + result.stderr)
             self.assertTrue(any((run / "dataset" / "hr").glob("*.png")))
 
     def _presplit_config(self, path):

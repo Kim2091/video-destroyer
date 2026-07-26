@@ -9,12 +9,13 @@ from .workflows.common import WorkflowError, report_existing_run, validate_exist
 
 
 def _print_summary(result):
-    print(f"Dataset ready: {result['dataset']}")
+    ready = result["validation"].startswith("passed")
+    print(f"Dataset ready: {result['dataset']}" if ready else f"Dataset not ready: {result['dataset']}")
     print(f"Clip pairs discovered: {result['pairs']}")
     print(f"Clip pairs accepted: {result['pairs_accepted']}")
     print(f"Frame sequences accepted: {result['sequences_accepted']}")
     print(f"Frame sequences rejected: {result['sequences_rejected']}")
-    print("Validation: passed")
+    print(f"Validation: {result['validation']}")
     print(f"Report: {result['report']}")
 
 

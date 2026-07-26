@@ -71,19 +71,26 @@ def _check_unknown(config):
             raise ConfigError(f"Unknown {section} key(s): " + ", ".join(sorted(unknown)))
 
 
+def _is_integer(value):
+    # bool is an int subclass, but "sequence_length: true" is never meant literally.
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def _validate(config, workflow):
     _check_unknown(config)
     if config.get("version") != 2:
         raise ConfigError("New commands require a version: 2 configuration")
     extract = config["extract"]
-    if not isinstance(extract["sequence_length"], int) or extract["sequence_length"] <= 0:
+    if not _is_integer(extract["sequence_length"]) or extract["sequence_length"] <= 0:
         raise ConfigError("extract.sequence_length must be a positive integer")
     if extract["mode"] not in {"full_chunks", "scene_starts", "gapped"}:
         raise ConfigError("extract.mode must be full_chunks, scene_starts, or gapped")
-    if extract["frame_format"].lower() not in {"png", "jpg", "jpeg"}:
+    if not isinstance(extract["frame_format"], str) or extract["frame_format"].lower() not in {"png", "jpg", "jpeg"}:
         raise ConfigError("extract.frame_format must be png, jpg, or jpeg")
+    if not _is_integer(extract["gap_frames"]) or extract["gap_frames"] < 0:
+        raise ConfigError("extract.gap_frames must be a non-negative integer")
     maximum = extract["maximum_sequences_per_pair"]
-    if maximum is not None and (not isinstance(maximum, int) or maximum < 0):
+    if maximum is not None and (not _is_integer(maximum) or maximum < 0):
         raise ConfigError("extract.maximum_sequences_per_pair must be null or a non-negative integer")
     expected = config["validation"]["expected_scale"]
     if expected is not None and (not isinstance(expected, (int, float)) or expected <= 0):

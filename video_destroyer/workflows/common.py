@@ -29,15 +29,16 @@ def _sequences(store):
     return [SequenceRecord.from_dict(value) for value in read_jsonl(store.root / "sequences.jsonl")]
 
 
-def _write_summary(store, pairs, sequences, validation_errors=None):
+def _write_summary(store, pairs, sequences, validation_errors=None, validation=None):
     accepted_pairs = sum(pair.status == "validated" for pair in pairs)
     rejected_pairs = sum(pair.status == "rejected" for pair in pairs)
     accepted_sequences = sum(sequence.status == "accepted" for sequence in sequences)
     rejected_sequences = sum(sequence.status == "rejected" for sequence in sequences)
-    validation = "passed" if not validation_errors else "failed"
+    if validation is None:
+        validation = "passed" if not validation_errors else "failed"
     dataset = store.root / "dataset"
     lines = [
-        f"Dataset ready: {dataset}" if validation == "passed" else "Dataset not ready",
+        f"Dataset ready: {dataset}" if validation.startswith("passed") else f"Dataset not ready ({validation})",
         f"Clip pairs discovered: {len(pairs)}",
         f"Clip pairs accepted: {accepted_pairs}",
         f"Clip pairs rejected: {rejected_pairs}",
@@ -54,6 +55,7 @@ def _write_summary(store, pairs, sequences, validation_errors=None):
         "sequences_accepted": accepted_sequences, "sequences_rejected": rejected_sequences,
         "dataset": str(dataset), "report": str(store.root / "reports" / "summary.txt"),
         "strict_failure": bool(rejected_pairs or rejected_sequences),
+        "validation": validation,
     }
 
 
@@ -163,4 +165,15 @@ def validate_existing_run(store):
 
 
 def report_existing_run(store):
-    return _write_summary(store, _records(store), _sequences(store))
+    """Rewrite the summary from stored manifests without revalidating anything."""
+    recorded = store.root / "reports" / "dataset-validation.json"
+    errors, validation = None, "not checked"
+    if recorded.is_file():
+        try:
+            result = json.loads(recorded.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            result = None
+        if isinstance(result, dict):
+            errors = list(result.get("errors") or ())
+            validation = "passed (recorded)" if result.get("passed") else "failed (recorded)"
+    return _write_summary(store, _records(store), _sequences(store), errors, validation)

@@ -126,11 +126,14 @@ class SceneDetector:
             video = open_video(video_path)
 
             # Create scene manager
+            # A factor of 0 means auto, so let PySceneDetect pick one for the frame
+            # size. Only a factor of 1 or more is a manual setting it will accept.
             scene_manager = SceneManager()
-            # Set the downscale factor on the SceneManager instance
-            # Explicitly disable auto_downscale to ensure manual factor is used
-            scene_manager.auto_downscale = False
-            scene_manager.downscale = self.downscale_factor 
+            if self.downscale_factor:
+                scene_manager.auto_downscale = False
+                scene_manager.downscale = self.downscale_factor
+            else:
+                scene_manager.auto_downscale = True
             # Add the detector
             scene_manager.add_detector(ContentDetector(threshold=self.threshold))
 

@@ -41,7 +41,26 @@ def _discover(root):
     return found
 
 
+MATERIALIZE_MODES = ("copy", "hardlink")
+
+
+def _materialize(source, destination, mode):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Discovery re-runs when a run is resumed before it completed, so it can find
+    # the clips an earlier attempt already placed here.
+    destination.unlink(missing_ok=True)
+    if mode == "copy":
+        shutil.copy2(source, destination)
+        return
+    try:
+        os.link(source, destination)
+    except OSError as error:
+        raise PairingError(f"Could not hardlink {source} to {destination}: {error}") from error
+
+
 def discover_import_pairs(hr_root, lr_root, materialize=None, run_root=None):
+    if materialize is not None and materialize not in MATERIALIZE_MODES:
+        raise PairingError(f"Unknown materialization mode: {materialize}")
     hr_root, lr_root = Path(hr_root).resolve(), Path(lr_root).resolve()
     hr, lr = _discover(hr_root), _discover(lr_root)
     for folded_key in set(key.casefold() for key in hr) & set(key.casefold() for key in lr):
@@ -69,16 +88,7 @@ def discover_import_pairs(hr_root, lr_root, materialize=None, run_root=None):
             hr_destination = Path(run_root) / ".work" / "clips" / "hr" / hr_value
             lr_destination = Path(run_root) / ".work" / "clips" / "lr" / lr_value
             for source, destination in ((hr_path, hr_destination), (lr_path, lr_destination)):
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                if materialize == "copy":
-                    shutil.copy2(source, destination)
-                elif materialize == "hardlink":
-                    try:
-                        os.link(source, destination)
-                    except OSError as error:
-                        raise PairingError(f"Could not hardlink {source} to {destination}: {error}") from error
-                else:
-                    raise PairingError(f"Unknown materialization mode: {materialize}")
+                _materialize(source, destination, materialize)
             hr_value = hr_destination.relative_to(run_root).as_posix()
             lr_value = lr_destination.relative_to(run_root).as_posix()
         records.append(PairRecord(pair_id(key), key, "imported", ownership, hr_value, lr_value))

@@ -9,8 +9,8 @@ from PIL import Image, ImageChops, ImageStat
 
 def _reject_for_blank(paths):
     for path in paths:
-        with Image.open(path).convert("L") as image:
-            if ImageStat.Stat(image).var[0] < 1.0:
+        with Image.open(path) as image:
+            if ImageStat.Stat(image.convert("L")).var[0] < 1.0:
                 return "blank or low-detail frame"
     return None
 
@@ -19,8 +19,9 @@ def _reject_for_motion(paths):
     if len(paths) < 2:
         return None
     for first, second in zip(paths, paths[1:]):
-        with Image.open(first).convert("L") as first_image, Image.open(second).convert("L") as second_image:
-            if ImageStat.Stat(ImageChops.difference(first_image, second_image)).mean[0] == 0:
+        with Image.open(first) as first_image, Image.open(second) as second_image:
+            difference = ImageChops.difference(first_image.convert("L"), second_image.convert("L"))
+            if ImageStat.Stat(difference).mean[0] == 0:
                 return "no motion between consecutive frames"
     return None
 
@@ -98,8 +99,13 @@ def curate_sequences(sequences, work_root, config, retain_rejected, rejected_roo
                 (accepted_lr / name).unlink(missing_ok=True)
             sequence.status, sequence.rejection_reason = "rejected", reason
             if retain_rejected:
-                _copy_or_tile(source_hr, rejected_root / "hr", sequence.hr_files, {"enabled": False})
-                _copy_or_tile(source_lr, rejected_root / "lr", sequence.lr_files, {"enabled": False})
+                try:
+                    _copy_or_tile(source_hr, rejected_root / "hr", sequence.hr_files, {"enabled": False})
+                    _copy_or_tile(source_lr, rejected_root / "lr", sequence.lr_files, {"enabled": False})
+                except (OSError, ValueError) as error:
+                    # Keeping a copy is a convenience. Failing to do so records the
+                    # reason but must never turn a rejection into a failed run.
+                    sequence.rejection_reason = f"{reason} (not retained: {error})"
         else:
             sequence.status, sequence.rejection_reason = "accepted", None
     return sequences
