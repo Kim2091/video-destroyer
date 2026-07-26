@@ -238,6 +238,13 @@ class FrameSequenceExtractor:
                 if not os.path.exists(hr_src_path) or not os.path.exists(lr_src_path):
                     if self.verbose_logging:
                         progress_logger.warning(f"Frame {frame_num} not found in temp directories")
+                    cleanup_pattern_hr = os.path.join(self.hr_frames_dir, f"show{sequence_id:05d}_Frame*.{self.frame_format}")
+                    cleanup_pattern_lr = os.path.join(self.lr_frames_dir, f"show{sequence_id:05d}_Frame*.{self.frame_format}")
+                    for path in glob.glob(cleanup_pattern_hr) + glob.glob(cleanup_pattern_lr):
+                        try:
+                            os.remove(path)
+                        except OSError:
+                            pass
                     return False
                 
                 # Destination paths with updated naming format (5 digits for show, 5 digits for frame)
@@ -267,6 +274,19 @@ class FrameSequenceExtractor:
                     pass
             
             return False    
+
+    def _limit_start_frames(self, start_frames: List[int]) -> List[int]:
+        """Limit start frames while retaining coverage across a chunk."""
+        if self.max_sequences is None or len(start_frames) <= self.max_sequences:
+            return start_frames
+        if self.max_sequences <= 0:
+            return []
+        if self.max_sequences == 1:
+            return start_frames[:1]
+
+        step = (len(start_frames) - 1) / (self.max_sequences - 1)
+        indices = [int(i * step) for i in range(self.max_sequences)]
+        return [start_frames[i] for i in indices]
             
     def extract_sequences_from_chunk_pair(self, hr_path: str, lr_path: str, chunk_index: int, total_chunks: int) -> int:
         """
@@ -290,13 +310,20 @@ class FrameSequenceExtractor:
             video_info = self.get_video_info(hr_path)
             fps = video_info['fps']
             frame_count = video_info.get('nb_frames', 0)
+            lr_video_info = self.get_video_info(lr_path)
+            if abs(fps - lr_video_info['fps']) > 0.001:
+                logger.error(
+                    f"HR/LR frame rates differ for {chunk_name}: "
+                    f"{fps} FPS vs {lr_video_info['fps']} FPS"
+                )
+                return 0
             
             # If nb_frames is not available, estimate from duration
             if frame_count == 0:
                 frame_count = int(video_info['duration'] * fps)
             
             # Calculate frames_to_skip based on time_gap or frame_skip
-            if self.time_gap is not None and not self.use_scene_detection:
+            if self.time_gap not in (None, 0) and not self.use_scene_detection:
                 frames_to_skip = int(self.time_gap * fps)
             else:
                 frames_to_skip = self.frame_skip
@@ -314,7 +341,10 @@ class FrameSequenceExtractor:
                         progress_logger.info("Using scene detection (full extraction required)...")
                     hr_frame_count = self.extract_frames_to_temp(hr_path, hr_temp_dir)
                     lr_frame_count = self.extract_frames_to_temp(lr_path, lr_temp_dir)
-                    frame_count = min(hr_frame_count, lr_frame_count)
+                    if hr_frame_count != lr_frame_count:
+                        logger.error(f"HR/LR frame counts differ for {chunk_name}: {hr_frame_count} vs {lr_frame_count}")
+                        return 0
+                    frame_count = hr_frame_count
                     
                     scene_detector = SceneDetector()
                     scene_list = scene_detector.detect_scenes(hr_path)
@@ -324,13 +354,7 @@ class FrameSequenceExtractor:
                         if start_frame + self.sequence_length <= frame_count:
                             start_frames.append(start_frame)
                     
-                    if self.max_sequences is not None and len(start_frames) > self.max_sequences:
-                        if len(start_frames) > 1:
-                            step = (len(start_frames) - 1) / (self.max_sequences - 1)
-                            indices = [int(i * step) for i in range(self.max_sequences)]
-                            start_frames = [start_frames[i] for i in indices]
-                        else:
-                            start_frames = start_frames[:self.max_sequences]
+                    start_frames = self._limit_start_frames(start_frames)
                     
                     return self._extract_with_temp_dirs(hr_temp_dir, lr_temp_dir, start_frames, chunk_index, total_chunks, hr_path)
             
@@ -344,18 +368,15 @@ class FrameSequenceExtractor:
                         progress_logger.info("Extracting full chunks (full extraction required)...")
                     hr_frame_count = self.extract_frames_to_temp(hr_path, hr_temp_dir)
                     lr_frame_count = self.extract_frames_to_temp(lr_path, lr_temp_dir)
-                    frame_count = min(hr_frame_count, lr_frame_count)
+                    if hr_frame_count != lr_frame_count:
+                        logger.error(f"HR/LR frame counts differ for {chunk_name}: {hr_frame_count} vs {lr_frame_count}")
+                        return 0
+                    frame_count = hr_frame_count
                     
                     max_start_frame = frame_count - self.sequence_length + 1
                     start_frames = list(range(1, max_start_frame + 1, self.sequence_length))
                     
-                    if self.max_sequences is not None and len(start_frames) > self.max_sequences:
-                        if len(start_frames) > 1:
-                            step = (len(start_frames) - 1) / (self.max_sequences - 1)
-                            indices = [int(i * step) for i in range(self.max_sequences)]
-                            start_frames = [start_frames[i] for i in indices]
-                        else:
-                            start_frames = start_frames[:self.max_sequences]
+                    start_frames = self._limit_start_frames(start_frames)
                     
                     return self._extract_with_temp_dirs(hr_temp_dir, lr_temp_dir, start_frames, chunk_index, total_chunks, hr_path)
             
@@ -369,7 +390,10 @@ class FrameSequenceExtractor:
                         progress_logger.info("Extracting frames with time-based gaps...")
                     hr_frame_count = self.extract_frames_to_temp(hr_path, hr_temp_dir)
                     lr_frame_count = self.extract_frames_to_temp(lr_path, lr_temp_dir)
-                    frame_count = min(hr_frame_count, lr_frame_count)
+                    if hr_frame_count != lr_frame_count:
+                        logger.error(f"HR/LR frame counts differ for {chunk_name}: {hr_frame_count} vs {lr_frame_count}")
+                        return 0
+                    frame_count = hr_frame_count
                     
                     max_start_frame = frame_count - self.sequence_length + 1
                     
@@ -380,13 +404,7 @@ class FrameSequenceExtractor:
                     step = self.sequence_length + frames_to_skip
                     start_frames = list(range(1, max_start_frame + 1, step))
                     
-                    if self.max_sequences is not None and len(start_frames) > self.max_sequences:
-                        if len(start_frames) > 1:
-                            step = (len(start_frames) - 1) / (self.max_sequences - 1)
-                            indices = [int(i * step) for i in range(self.max_sequences)]
-                            start_frames = [start_frames[i] for i in indices]
-                        else:
-                            start_frames = start_frames[:self.max_sequences]
+                    start_frames = self._limit_start_frames(start_frames)
                     
                     return self._extract_with_temp_dirs(hr_temp_dir, lr_temp_dir, start_frames, chunk_index, total_chunks, hr_path)
                 
@@ -534,14 +552,14 @@ def main():
     parser.add_argument('-c', '--chunks_dir', type=str, help='Directory containing HR and LR chunks')
     parser.add_argument('-o', '--output_dir', type=str, help='Directory to save extracted frames')
     parser.add_argument('-s', '--sequence_length', type=int, help='Number of frames in each sequence. Minimum of 5 for TSCUNet. 10-30 is good.')
-    parser.add_argument('-d', '--use_scene_detection', action='store_true', help='Use scene detection to determine sequence start points')
+    parser.add_argument('-d', '--use_scene_detection', action='store_true', default=None, help='Use scene detection to determine sequence start points')
     parser.add_argument('-m', '--max_sequences', type=int, help='Maximum number of sequences to extract per chunk pair')
     parser.add_argument('-t', '--time_gap', type=float, help='Time in seconds to skip between sequences (disabled when using scene detection)')
     parser.add_argument('-f', '--frame_skip', type=int, help='Number of frames to skip between sequences (alternative to time_gap)')
     parser.add_argument('--frame_format', choices=['png', 'jpg', 'jpeg'], help='Image format for extracted frames')
-    parser.add_argument('--extract_full', action='store_true', help='Extract all possible sequences without overlap')
+    parser.add_argument('--extract_full', action='store_true', default=None, help='Extract all possible sequences without overlap')
     parser.add_argument('--config', type=str, default='config.yaml', help='Path to configuration file')
-    parser.add_argument('--verbose', action='store_true', help='Enable verbose logging')
+    parser.add_argument('--verbose', action='store_true', default=None, help='Enable verbose logging')
     args = parser.parse_args()
     
     try:

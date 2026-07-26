@@ -19,6 +19,8 @@ class DegradationLogger:
         self.logger = logging.getLogger('degradation_logger')
         self.logger.setLevel(getattr(logging, log_level))
         self.logger.propagate = False
+        for handler in self.logger.handlers:
+            handler.close()
         self.logger.handlers = []
         
         # Simplified timestamp format
@@ -120,6 +122,12 @@ class DegradationLogger:
         """Log the completion of chunk processing"""
         self.logger.info(f"Complete: {os.path.basename(chunk_path)}\n")
 
+    def close(self) -> None:
+        """Close owned handlers when logging is no longer needed."""
+        for handler in self.logger.handlers[:]:
+            handler.close()
+            self.logger.removeHandler(handler)
+
 def setup_global_logging(config: Dict[str, Any]) -> None:
     """Setup global logging configuration"""
     log_config = config.get('logging', {})
@@ -127,6 +135,8 @@ def setup_global_logging(config: Dict[str, Any]) -> None:
     
     # Reset any existing handlers
     root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        handler.close()
     root_logger.handlers = []
     
     # Configure root logger

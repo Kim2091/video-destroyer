@@ -40,7 +40,7 @@ def get_video_files(folder_path, extensions):
         video_files.extend(folder.glob(f"*{ext}"))
         video_files.extend(folder.glob(f"*{ext.upper()}"))  # Also check uppercase
     
-    return sorted([str(f) for f in video_files])
+    return sorted({str(f) for f in video_files})
 
 
 def get_video_name(video_path):
@@ -83,6 +83,8 @@ def process_single_video(config, video_path=None, skip_frame_extraction=False):
         
         # Process the video
         processed_pairs = video_processor.process_video()
+        if not processed_pairs:
+            return False, "No HR/LR chunk pairs were successfully processed."
         
         logger.info(f"Video processing complete. Created {len(processed_pairs)} HR/LR chunk pairs.")
         
@@ -100,6 +102,8 @@ def process_single_video(config, video_path=None, skip_frame_extraction=False):
                 extractor = FrameSequenceExtractor(config)
                 total_sequences = extractor.extract_all_sequences()
                 logger.info(f"Frame extraction complete. Extracted {total_sequences} sequences.")
+                if total_sequences == 0:
+                    return False, "Frame extraction did not produce any sequences."
                 
                 # Check if automatic post-processing is enabled
                 post_config = config.get('post_processing', {})
@@ -146,6 +150,13 @@ def main():
         if not check_ffmpeg_available():
             return 1
 
+        # Existing chunks provide all required video metadata, so no source input
+        # is needed in this mode.
+        if config.get('use_existing_chunks', False):
+            config['input_video'] = config.get('input', '')
+            success, error = process_single_video(config)
+            return 0 if success else 1
+
         # Get input path and auto-detect if it's a file or folder
         input_path = config.get('input')
         
@@ -177,6 +188,7 @@ def main():
             
             # Process each video
             results = []
+            successful_chunk_dirs = []
             base_chunks_dir = config.get('chunks_directory', 'chunks')
             
             for i, video_path in enumerate(video_files, 1):
@@ -186,10 +198,15 @@ def main():
                 
                 # Deep copy config so nested dicts aren't shared between videos
                 video_config = copy.deepcopy(config)
+                video_config['chunks_directory'] = os.path.join(
+                    base_chunks_dir, get_video_name(video_path)
+                )
                 
                 # Process the video (skip frame extraction for batch mode)
                 success, error = process_single_video(video_config, video_path, skip_frame_extraction=True)
                 results.append((Path(video_path).name, success, error))
+                if success:
+                    successful_chunk_dirs.append(video_config['chunks_directory'])
                 
                 if success:
                     logger.info(f"[SUCCESS] Successfully processed: {Path(video_path).name}")
@@ -229,13 +246,16 @@ def main():
                     logger.info(f"{'='*80}")
                     
                     try:
-                        # Update config to use base chunks directory
-                        extraction_config = config.copy()
-                        extraction_config['chunks_directory'] = base_chunks_dir
-                        
-                        extractor = FrameSequenceExtractor(extraction_config)
-                        total_sequences = extractor.extract_all_sequences()
+                        total_sequences = 0
+                        for chunks_directory in successful_chunk_dirs:
+                            extraction_config = copy.deepcopy(config)
+                            extraction_config['chunks_directory'] = chunks_directory
+                            extractor = FrameSequenceExtractor(extraction_config)
+                            total_sequences += extractor.extract_all_sequences()
                         logger.info(f"Frame extraction complete. Extracted {total_sequences} sequences from all videos.")
+                        if total_sequences == 0:
+                            logger.error("Frame extraction did not produce any sequences.")
+                            return 1
                         
                         # Check if automatic post-processing is enabled
                         post_config = config.get('post_processing', {})
@@ -247,7 +267,7 @@ def main():
                             logger.info(f"{'='*80}")
                             
                             try:
-                                post_processor = PostProcessor(extraction_config)
+                                post_processor = PostProcessor(config)
                                 post_processor.run()
                                 logger.info("Post-processing complete for all videos.")
                             except Exception as e:

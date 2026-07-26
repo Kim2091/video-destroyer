@@ -4,7 +4,7 @@ input: "input.mp4"
 video_extensions: [".mp4", ".mov", ".mkv", ".avi", ".webm", ".flv"]  # Used when input is a folder
 
 chunks_directory: "chunks"  # Will contain HR and LR subfolders (or per-video subfolders when processing folder)
-use_existing_chunks: false  # When true, skips video splitting and processes existing HR chunks
+use_existing_chunks: false  # When true, skips splitting and processes existing HR chunks; input is optional
 
 # Chunk settings
 chunk_strategy: "scene_detection"  # Options: "duration", "scene_detection", "frame_count"
@@ -104,7 +104,7 @@ degradations:
       offset_y_range: [-2, 2]
       enable_color_shift: true
 
-  # This introduces interlacing on your input clip. Adjust the field order for what you need
+  # This changes temporal cadence and cannot be used when extracting paired HR/LR frames.
   - name: "interlace"
     enabled: false
     probability: 1 # Example probability, adjust as needed
@@ -177,8 +177,7 @@ post_processing:
     enabled: false  # Enable frame tiling
     tile_width: 512  # Width of each tile in pixels for HR frames
     tile_height: 512  # Height of each tile in pixels for HR frames
-    # LR tile size is automatically calculated based on fixed_scale from resize degradation
-    # e.g., if fixed_scale: 0.5, LR tiles will be 256x256
+    # LR tile size is calculated from the actual extracted HR/LR frame dimensions.
     seed: 1024  # Random seed for reproducible tile selection
     workers: null  # Number of parallel workers (null = use all CPU cores)
   

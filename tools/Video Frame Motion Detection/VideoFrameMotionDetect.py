@@ -77,7 +77,7 @@ def analyze_sequence_motion(input_dir, sequence_name, frames, min_motion=0.5, ma
         img2 = cv2.imread(img2_path)
         
         if img1 is None or img2 is None:
-            print(f"⚠️  WARNING: Could not load frames {filename1} or {filename2}")
+            print(f"WARNING: Could not load frames {filename1} or {filename2}")
             continue
         
         # Calculate motion
@@ -85,19 +85,19 @@ def analyze_sequence_motion(input_dir, sequence_name, frames, min_motion=0.5, ma
         
         # Check thresholds
         if min_motion is not None and motion_score < min_motion:
-            print(f"⚠️  LOW MOTION: Frames {frame_num1:05d} → {frame_num2:05d} | Score: {motion_score:.2f}% (< {min_motion}%)")
+            print(f"LOW MOTION: Frames {frame_num1:05d} -> {frame_num2:05d} | Score: {motion_score:.2f}% (< {min_motion}%)")
             issues_found = True
         elif max_motion is not None and motion_score > max_motion:
-            print(f"⚠️  HIGH MOTION: Frames {frame_num1:05d} → {frame_num2:05d} | Score: {motion_score:.2f}% (> {max_motion}%)")
+            print(f"HIGH MOTION: Frames {frame_num1:05d} -> {frame_num2:05d} | Score: {motion_score:.2f}% (> {max_motion}%)")
             issues_found = True
         else:
-            print(f"✓ OK: Frames {frame_num1:05d} → {frame_num2:05d} | Score: {motion_score:.2f}%")
+            print(f"OK: Frames {frame_num1:05d} -> {frame_num2:05d} | Score: {motion_score:.2f}%")
     
     if not issues_found:
-        print(f"✓ All frames in sequence have acceptable motion levels")
+        print("All frames in sequence have acceptable motion levels")
     elif move_to_dir:
         # Move entire sequence if any issues were found
-        print(f"\n⚠️  Moving entire sequence ({len(frames)} frames) to: {move_to_dir}")
+        print(f"\nMoving entire sequence ({len(frames)} frames) to: {move_to_dir}")
         for frame_num, filename in frames:
             src = os.path.join(input_dir, filename)
             dst = os.path.join(move_to_dir, filename)
@@ -115,6 +115,10 @@ def main():
                         help='Optional directory to move frames with motion issues')
     
     args = parser.parse_args()
+    if args.min_motion < 0:
+        args.min_motion = None
+    if args.max_motion < 0:
+        args.max_motion = None
     
     if not os.path.isdir(args.input_dir):
         print(f"Error: Directory '{args.input_dir}' does not exist")

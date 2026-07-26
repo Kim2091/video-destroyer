@@ -150,7 +150,7 @@ class VideoProcessor:
         self.params = config.get('params', {})
         
         # Video paths and directories
-        self.input_path = config['input_video']
+        self.input_path = config.get('input_video', config.get('input', ''))
         self.chunks_directory = os.path.join(config.get('chunks_directory', 'chunks'))
         self.hr_directory = os.path.join(self.chunks_directory, 'HR')
         self.lr_directory = os.path.join(self.chunks_directory, 'LR')
@@ -258,6 +258,11 @@ class VideoProcessor:
         except Exception as e:
             logger.warning(f"Could not determine last chunk number: {str(e)}")
             return 0
+
+    @staticmethod
+    def _is_managed_chunk_file(filename: str) -> bool:
+        """Return whether a filename is a chunk created by this tool."""
+        return filename.startswith('chunk_') and filename.endswith(('.mp4', '.mkv'))
 
     def _setup_degradations(self, config):
         """Set up degradation pipeline"""
@@ -409,10 +414,11 @@ class VideoProcessor:
         }
         return degradation_classes.get(name)
 
-    def _create_chunk_pairs(self):
-        """Create HR/LR pairs from HR chunks"""
-        chunk_files = sorted([f for f in os.listdir(self.hr_directory) 
-                             if f.endswith((".mkv", ".mp4"))])
+    def _create_chunk_pairs(self, chunk_files: List[str] = None):
+        """Create HR/LR pairs from the chunks produced for this run."""
+        if chunk_files is None:
+            chunk_files = sorted([f for f in os.listdir(self.hr_directory)
+                                  if self._is_managed_chunk_file(f)])
         chunk_pairs = [(os.path.join(self.hr_directory, f), 
                        os.path.join(self.lr_directory, f)) for f in chunk_files]
         
@@ -446,7 +452,7 @@ class VideoProcessor:
             except Exception as e:
                 logger.error(f"Failed to process scene {i}: {str(e)}")
 
-        return self._create_chunk_pairs()
+        return self._create_chunk_pairs([os.path.basename(path) for path in completed_files])
 
     @log_errors
     def split_video_by_duration(self) -> List[Tuple[str, str]]:
@@ -469,7 +475,7 @@ class VideoProcessor:
             output_file = self._process_chunk_range(start_frame, end_frame, i)
             chunk_list.append(output_file)
         
-        return self._create_chunk_pairs()
+        return self._create_chunk_pairs([os.path.basename(path) for path in chunk_list])
 
     def split_video_by_frames(self) -> List[Tuple[str, str]]:
         """Split video into chunks with a fixed number of frames per chunk"""
@@ -489,7 +495,7 @@ class VideoProcessor:
             output_file = self._process_chunk_range(start_frame, end_frame, i)
             chunk_list.append(output_file)
         
-        return self._create_chunk_pairs()
+        return self._create_chunk_pairs([os.path.basename(path) for path in chunk_list])
 
     def split_video(self) -> List[Tuple[str, str]]:
         """Split video based on configured strategy"""
@@ -497,7 +503,8 @@ class VideoProcessor:
         if self.chunk_offset == 0:
             for directory in [self.hr_directory, self.lr_directory]:
                 for file in os.listdir(directory):
-                    os.unlink(os.path.join(directory, file))
+                    if self._is_managed_chunk_file(file):
+                        os.unlink(os.path.join(directory, file))
         
         if self.chunk_strategy == "scene_detection":
             return self.split_video_by_scenes()
@@ -531,11 +538,13 @@ class VideoProcessor:
         """Process all chunks with degradations"""
         logger.info(f"Processing {len(chunk_pairs)} chunks")
         processed_pairs = []
+        failed_chunks = []
         
         for i, (hr_path, lr_path) in enumerate(tqdm(chunk_pairs, desc="Processing chunks"), 1):
             try:
                 if not os.path.exists(hr_path):
                     logger.error(f"HR chunk not found: {hr_path}")
+                    failed_chunks.append(hr_path)
                     continue
                     
                 # Process the chunk
@@ -544,10 +553,13 @@ class VideoProcessor:
                 
             except Exception as e:
                 logger.exception(f"Failed to process chunk {i}")  # This logs the full stack trace
+                failed_chunks.append(hr_path)
                 continue
         
         if not processed_pairs:
             logger.warning("No chunks were successfully processed!")
+        if failed_chunks:
+            raise RuntimeError(f"Failed to process {len(failed_chunks)} of {len(chunk_pairs)} chunks")
         
         return processed_pairs
 
@@ -586,14 +598,21 @@ class VideoProcessor:
             logger.info(f"HR resize enabled: {self.video_info['width']}x{self.video_info['height']} to {width}x{height} ({self.hr_resize_filter})")
         
         if self.use_existing_chunks:
-            return self.process_existing_chunks()
+            processed_pairs = self.process_existing_chunks()
+            if not processed_pairs:
+                raise RuntimeError("No existing chunks were successfully processed")
+            return processed_pairs
         
         # Original processing flow
         logger.info("Splitting video into chunks...")
         chunk_pairs = self.split_video()
+        if not chunk_pairs:
+            raise RuntimeError("No chunks were created from the input video")
         
         logger.info("Processing chunks with degradations...")
         processed_pairs = self.process_chunks(chunk_pairs)
+        if not processed_pairs:
+            raise RuntimeError("No chunks were successfully processed")
         
         total_frames = sum(self._get_frame_count(hr_path) for hr_path, _ in processed_pairs)
         logger.info(f"Processed {len(processed_pairs)} chunks ({total_frames} frames)")

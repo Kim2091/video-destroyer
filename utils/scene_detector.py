@@ -165,7 +165,8 @@ class SceneDetector:
             )
 
             # Get the final list (might be shorter if stopped early)
-            scene_list = scene_manager.get_scene_list()
+            # Treat a no-cut video as one scene instead of returning no work.
+            scene_list = scene_manager.get_scene_list(start_in_scene=True)
             
             if detection_stopped_early:
                  logger.info(f"Detection stopped early. Found {len(scene_list)} scenes.")

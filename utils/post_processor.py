@@ -51,9 +51,6 @@ class PostProcessor:
         self.tile_seed = tiling_config.get('seed', 1024)
         self.tile_workers = tiling_config.get('workers', None) or cpu_count()
         
-        # Get scale factor from degradations config
-        self.scale_factor = self._get_scale_factor(config)
-        
         # Blank frame detection configuration
         blank_config = post_config.get('blank_detection', {})
         self.blank_enabled = blank_config.get('enabled', False)
@@ -78,14 +75,34 @@ class PostProcessor:
         self.hr_tiled_bad_dir = os.path.join(self.frames_directory, 'hr_tiled_bad')
         self.lr_tiled_bad_dir = os.path.join(self.frames_directory, 'lr_tiled_bad')
         
-    def _get_scale_factor(self, config: Dict[str, Any]) -> float:
-        """Extract scale factor from resize degradation config."""
-        degradations = config.get('degradations', [])
-        for deg in degradations:
-            if deg.get('name') == 'resize' and deg.get('enabled', False):
-                params = deg.get('params', {})
-                return params.get('fixed_scale', 1.0)
-        return 1.0
+    def _get_paired_scale_factor(self) -> float:
+        """Get the actual, consistent scale shared by extracted HR/LR frames."""
+        scale_factor = None
+        for filename in sorted(os.listdir(self.hr_frames_dir)):
+            hr_path = os.path.join(self.hr_frames_dir, filename)
+            lr_path = os.path.join(self.lr_frames_dir, filename)
+            if not os.path.isfile(hr_path) or not os.path.isfile(lr_path):
+                continue
+
+            try:
+                with Image.open(hr_path) as hr_image, Image.open(lr_path) as lr_image:
+                    hr_width, hr_height = hr_image.size
+                    lr_width, lr_height = lr_image.size
+            except OSError:
+                continue
+
+            width_scale = lr_width / hr_width
+            height_scale = lr_height / hr_height
+            if abs(width_scale - height_scale) > 0.001:
+                raise ValueError(f"HR/LR aspect ratios differ for {filename}")
+            if scale_factor is None:
+                scale_factor = width_scale
+            elif abs(scale_factor - width_scale) > 0.001:
+                raise ValueError("HR/LR scale differs between extracted frame pairs")
+
+        if scale_factor is None:
+            raise ValueError("No readable paired HR/LR frames found for tiling")
+        return scale_factor
     
     def run(self):
         """Execute the full post-processing pipeline."""
@@ -276,12 +293,13 @@ class PostProcessor:
         frame_config = self.config.get('frame_extraction', {})
         sequence_length = frame_config.get('sequence_length', 5)
         
-        # Calculate LR tile size based on scale factor
-        lr_tile_width = int(self.tile_width * self.scale_factor)
-        lr_tile_height = int(self.tile_height * self.scale_factor)
+        # Use the actual output geometry, which can differ when resize is skipped.
+        actual_scale_factor = self._get_paired_scale_factor()
+        lr_tile_width = max(1, round(self.tile_width * actual_scale_factor))
+        lr_tile_height = max(1, round(self.tile_height * actual_scale_factor))
         
         logger.info(f"Tiling HR frames: {self.tile_width}x{self.tile_height}")
-        logger.info(f"Tiling LR frames: {lr_tile_width}x{lr_tile_height} (scale factor: {self.scale_factor})")
+        logger.info(f"Tiling LR frames: {lr_tile_width}x{lr_tile_height} (scale factor: {actual_scale_factor})")
         logger.info(f"Sequence length: {sequence_length}, Seed: {self.tile_seed}, Workers: {self.tile_workers}")
         
         # Tile HR frames

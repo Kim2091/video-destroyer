@@ -22,6 +22,43 @@ class DegradationPipeline:
         else:
             self.degradations.append(degradation)
 
+    @staticmethod
+    def _build_filter_graph(filter_expressions: List[str]) -> str:
+        """Build an ordered filter graph without moving simple filters."""
+        if not any(';' in expression for expression in filter_expressions):
+            return ','.join(filter_expressions)
+
+        graph_parts = []
+        pending_simple_filters = []
+        current_label = None
+        chain_index = 0
+
+        for index, expression in enumerate(filter_expressions):
+            if ';' not in expression:
+                pending_simple_filters.append(expression)
+                continue
+
+            prefix = f'[{current_label}]' if current_label else ''
+            if pending_simple_filters:
+                prefix += ','.join(pending_simple_filters) + ','
+
+            graph = prefix + expression
+            if index < len(filter_expressions) - 1:
+                current_label = f'_chain_{chain_index}'
+                graph += f'[{current_label}]'
+                chain_index += 1
+            else:
+                current_label = None
+
+            graph_parts.append(graph)
+            pending_simple_filters = []
+
+        if pending_simple_filters:
+            prefix = f'[{current_label}]' if current_label else ''
+            graph_parts.append(prefix + ','.join(pending_simple_filters))
+
+        return ';'.join(graph_parts)
+
     def process_video(self, input_path: str, output_path: str) -> str:
         """
         Apply all degradations in sequence to the input video using direct piping.
@@ -75,52 +112,11 @@ class DegradationPipeline:
         # Start building the ffmpeg command
         input_stream = ffmpeg.input(input_path)
 
-        # Apply all filter expressions in one complex filter if we have any
+        # Apply all filter expressions in their configured order.
         if filter_expressions:
-            # Separate simple filters (no ';') from complex filter graphs (contain ';')
-            simple_filters = []
-            complex_filters = []
-            for expr in filter_expressions:
-                if ';' in expr:
-                    complex_filters.append(expr)
-                else:
-                    simple_filters.append(expr)
-
-            if complex_filters:
-                # Chain multiple complex filter graphs through intermediate labels.
-                # Each complex graph consumes the unnamed input stream; when there
-                # are several, we label the output of graph N and feed it as the
-                # input of graph N+1 so the unnamed input is only consumed once.
-                chained_parts = []
-                for idx, cf in enumerate(complex_filters):
-                    is_last = (idx == len(complex_filters) - 1)
-
-                    # If this is not the first complex graph, replace its unnamed
-                    # input with the previous graph's output label.
-                    if idx > 0:
-                        cf = f'[_chain_{idx - 1}]' + cf
-
-                    # If this is not the last complex graph, label its output so
-                    # the next graph can consume it.
-                    if not is_last:
-                        cf = cf + f'[_chain_{idx}]'
-
-                    chained_parts.append(cf)
-
-                complex_filter = ';'.join(chained_parts)
-
-                # Prepend simple filters before the first complex graph's input
-                if simple_filters:
-                    simple_chain = ','.join(simple_filters)
-                    complex_filter = simple_chain + ',' + complex_filter
-
-                logger.debug(f"Applied complex filter graph: {complex_filter}")
-                output_args = {'filter_complex': complex_filter}
-            else:
-                # All filters are simple, join with commas as a linear chain
-                complex_filter = ','.join(simple_filters)
-                logger.debug(f"Applied filter chain: {complex_filter}")
-                output_args = {'filter_complex': complex_filter}
+            complex_filter = self._build_filter_graph(filter_expressions)
+            logger.debug(f"Applied filter graph: {complex_filter}")
+            output_args = {'filter_complex': complex_filter}
         else:
             output_args = {}
         
