@@ -32,6 +32,7 @@ def load_config(config_path: str) -> dict:
 
 
 def main():
+    print("DEPRECATED: python post_process.py is a legacy wrapper. New workflows curate automatically.", file=__import__('sys').stderr)
     parser = argparse.ArgumentParser(
         description='Post-process extracted video frames: tile, detect motion, and sync folders',
         formatter_class=argparse.RawDescriptionHelpFormatter,

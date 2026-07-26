@@ -1,137 +1,57 @@
 # Video Destroyer
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/J3J3BCC3L)
 
-A tool designed to create datasets from a single high quality input video for AI training purposes. It processes videos by splitting them into chunks, applying random codecs and quality settings (more degredations to come), and finally extracting frame sequences.
+Video Destroyer builds validated paired HR/LR frame datasets for training. It has two canonical workflows and requires FFmpeg on `PATH`.
 
-## 🎯 Features
+## Install
 
-This toolkit consists of two main components:
-1. Video Processing (`main.py`)
-   - Splits videos into chunks
-   - Applies random codecs with varying quality settings (more degredations to come)
-   - Creates paired HR/LR video chunks
-
-2. Frame Extraction (`frame_extractor.py`)
-   - Extracts frame sequences from video chunks
-   - Supports scene-based or time-based extraction
-   - Creates paired HR/LR frame sequences
-   
-- Note: You MUST have ffmpeg in your PATH to use this program
-
-## 🚀 Quick Start
-
-1. Run this command to clone the repository
 ```bash
-git clone https://github.com/Kim2091/video-destroyer/
+pip install .
 ```
 
-2. Install Python dependencies (and ensure ffmpeg is in your PATH):
+`python -m video_destroyer` is equivalent to the installed `video-destroyer` command.
+
+## Desktop App
+
+Install the optional desktop interface, then launch it:
+
 ```bash
-pip install -r requirements.txt
+pip install ".[gui]"
+video-destroyer-gui
 ```
 
-3. **Edit ```config.yaml``` and configure it as you wish**
-    - Set `input` to a video file or folder of videos (auto-detects which mode to use)
-    - Customize video degradations
-    - NOTE: Only resizing and compression are enabled by default
+The GUI provides folder/file pickers and guided create/import forms. The Create screen includes a drag-sortable degradation pipeline: toggle a visual stage, set its probability, and drag it into the order it should run. Codec encoding remains locked as the final required step. It runs the same canonical commands as the terminal and shows their live output, so every GUI run has the same validated run directory, logs, reports, and resumable state. Configuration files remain optional and can be selected as a base for advanced settings.
 
-4. Run the video processor:
+## Create A Dataset
+
+Generate degraded LR clips from a source video or source directory, then extract and validate frames:
+
 ```bash
-python main.py --config config.yaml
+video-destroyer create D:/source-videos --output D:/datasets/generated
 ```
 
-5. Extract frame sequences:
+## Import Matched Clips
+
+Import an existing recursive HR/LR clip collection. Files are referenced by default and are never changed:
+
 ```bash
-python frame_extractor.py
+video-destroyer import-pairs --hr D:/clips/hr --lr D:/clips/lr --output D:/datasets/imported
 ```
 
-## 💡 Advanced Usage Guide
+Pairing uses the normalized relative path without its final extension, so `show/scene.mkv` pairs with `show/scene.mp4`. Unmatched paths, duplicate keys, and case-folded collisions fail before extraction. Use `--materialize copy` or `--materialize hardlink` to make run-owned clips.
 
-### Video Processing (main.py)
-The first step creates paired high-quality and degraded video chunks:
-- Splits input video into chunks using scene detection or fixed duration
-- Processes each chunk with random codecs and quality settings
-- Creates HR (original) and LR (degraded) pairs
+## Run Layout
 
-The tool automatically detects whether you're processing a single video or a folder of videos.
+Each command creates a run directory containing immutable `run.yaml`, resumable `state.json`, `pairs.jsonl`, `sequences.jsonl`, reports, logs, and application-owned `.work` data. Training files are only published after validation under:
 
-**Single Video Mode:**
-Edit `config.yaml` and set the `input` to a video file:
-```yaml
-input: "C:/path/to/video.mp4"
+```text
+RUN/dataset/hr/
+RUN/dataset/lr/
 ```
 
-**Batch Processing Mode:**
-Edit `config.yaml` and set the `input` to a folder path:
-```yaml
-input: "C:/path/to/video/folder"
-```
+Use `video-destroyer resume RUN` for interrupted work, `video-destroyer validate RUN` to recheck output, and `video-destroyer report RUN` to rewrite the summary. A run is `completed`, `completed_with_rejections`, `failed`, or `interrupted`. Rejections are documented in manifests and do not fail a valid run unless `--fail-on-rejection` is supplied.
 
-Then run:
-```bash
-python main.py --config config.yaml
-```
+## Configuration
 
-When processing a folder, each video will be processed independently and output to its own subfolder:
-- `chunks_directory/video1_name/HR/`
-- `chunks_directory/video1_name/LR/`
-- `chunks_directory/video2_name/HR/`
-- `chunks_directory/video2_name/LR/`
-- etc.
+Both starting commands work with built-in defaults. Optional processing configuration is versioned YAML and must begin with `version: 2`; paths belong on the command line. The configuration can customize `create`, `extract`, `curate`, `validation`, and `runtime` settings. `import-pairs` does not require a `create` section.
 
-The batch processor will:
-- Automatically detect all videos in the folder (supports .mp4, .mov, .mkv, .avi, .webm, .flv)
-- Process each video independently
-- Continue processing even if one video fails
-- Provide a summary report at the end
-
-### Frame Extraction (frame_extractor.py)
-The second step extracts frame sequences from the video chunks.
-
-To use, you can either edit the configuration in config.yaml for frame extraction, or use the arguments below.
-
-Arguments:
-```bash
--c, --chunks_dir     Directory containing HR and LR chunks
--o, --output_dir     Directory to save extracted frames
--s, --sequence_length Number of frames in each sequence
--d, --use_scene_detection Use scene detection for frame selection
--m, --max_sequences  Maximum sequences per chunk pair
--t, --time_gap       Time gap between sequences in seconds
-```
-
-Example usage:
-```bash
-# Extract using time gaps
-python frame_extractor.py -c chunks -o frames -s 5 -t 3.0
-
-# Extract using scene detection
-python frame_extractor.py -c chunks -o frames -s 5 -d
-```
-
-## 📝 Tips & Additional Info
-
-- The video processor creates two directories for each chunk:
-  - `chunks/HR/`: Original quality chunks
-  - `chunks/LR/`: Degraded video chunks
-
-- Frame sequences are saved as:
-  - `frames/HR/show{N}_Frame{M}.png`: High-quality frames
-  - `frames/LR/show{N}_Frame{M}.png`: Degraded frames
-
-- Scene detection is recommended for videos with distinct scene changes
-- Time-based extraction is better for continuous footage
-
-- When using scene detection, the time gap parameter is ignored
-- Default sequence length is 5 frames
-- Default time gap is 3 seconds when not using scene detection
-
-## 🎓 Training Dataset Creation
-
-This tool is particularly useful for creating training datasets for video enhancement AI models:
-1. Use high-quality source videos as input
-2. Process them to create controlled degradations
-3. Extract matching frame sequences
-4. Use the resulting HR/LR pairs for training
-
-Train one yourself with [traiNNer-redux](https://github.com/the-database/traiNNer-redux), using the TSCUNet architecture!
+The legacy v1 `config.yaml`, `main.py`, `frame_extractor.py`, and `post_process.py` remain temporarily available as deprecated wrappers. Replace `use_existing_chunks: true` with `video-destroyer import-pairs --hr ... --lr ... --output ...`.

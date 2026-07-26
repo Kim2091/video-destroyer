@@ -132,6 +132,7 @@ def process_single_video(config, video_path=None, skip_frame_extraction=False):
 
 
 def main():
+    print("DEPRECATED: python main.py uses the legacy v1 workflow. Use 'video-destroyer create INPUT --output RUN' instead.", file=__import__('sys').stderr)
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Video destroyer: re-encode video chunks with random codecs')
     parser.add_argument('--config', type=str, default='config.yaml',

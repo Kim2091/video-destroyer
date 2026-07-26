@@ -547,6 +547,7 @@ def merge_configs(file_config: Dict[str, Any], arg_config: Dict[str, Any]) -> Di
 
 
 def main():
+    print("DEPRECATED: python frame_extractor.py is a legacy wrapper. Use 'video-destroyer create' or 'video-destroyer import-pairs' instead.", file=__import__('sys').stderr)
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='Extract frame sequences from video chunks')
     parser.add_argument('-c', '--chunks_dir', type=str, help='Directory containing HR and LR chunks')
