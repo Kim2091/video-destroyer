@@ -19,7 +19,11 @@ pip install ".[gui]"
 video-destroyer-gui
 ```
 
-The GUI provides folder/file pickers and guided create/import forms. The Create screen includes a drag-sortable degradation pipeline: toggle a visual stage, set its probability, and drag it into the order it should run. Codec encoding remains locked as the final required step. It runs the same canonical commands as the terminal and shows their live output, so every GUI run has the same validated run directory, logs, reports, and resumable state. Configuration files remain optional and can be selected as a base for advanced settings.
+Pick a workflow in the header, then work down the numbered steps to the action button in the bottom-right corner. Create is source → degradations → output, Import is paired clips → file handling → output, and Existing run is run folder → action.
+
+Step 2 of Create is the degradation pipeline. Each stage is numbered in the order it runs: toggle a stage on or off, set its chance, and drag it to renumber the pipeline. Codec encoding stays locked as the final step, and a line under the list summarizes the stages that will actually run.
+
+The interface runs the same canonical commands as the terminal and streams their live output, so every GUI run has the same validated run directory, logs, reports, and resumable state. Configuration files remain optional and can be selected as a base under Advanced.
 
 ## Create A Dataset
 
