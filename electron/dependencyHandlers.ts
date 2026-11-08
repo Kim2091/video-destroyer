@@ -1,0 +1,162 @@
+import { ipcMain } from 'electron';
+import { logger } from './logger';
+import { configManager } from './configManager';
+import { detectGpuVendor } from './gpuDetection';
+import { getBackendsForVendor } from './vendorPackages';
+import { createIpcHandler } from './ipcUtilities';
+import { DependencyManager } from './dependencyManager';
+import { PluginInstaller } from './pluginInstaller';
+import { describeInstallFailure, failureResult, SingleFlight, type InstallResult } from './installFlow';
+
+/** Which half of setup failed: the core runtime, or the plugin phase the user can skip. */
+type SetupResult = InstallResult & { phase?: 'core' | 'plugins' };
+
+/**
+ * Registers all dependency and plugin-related IPC handlers
+ */
+export function registerDependencyHandlers(
+  dependencyManager: DependencyManager,
+  pluginInstaller: PluginInstaller
+) {
+  ipcMain.handle('check-dependencies', 
+    createIpcHandler(
+      'check-dependencies',
+      () => dependencyManager.checkDependencies(),
+      { logResult: true, throwOnError: true }
+    )
+  );
+
+  ipcMain.handle('detect-cuda-support',
+    createIpcHandler(
+      'detect-cuda-support',
+      async () => {
+        // Runs the full vendor probe and persists it (this handler fires at
+        // every app mount, so it keeps gpuVendor fresh across GPU/driver
+        // changes). The renderer contract stays a boolean: nvidia-smi success
+        // implied `true` before and still does.
+        const vendor = await detectGpuVendor(configManager.getGpuVendor());
+        await configManager.setGpuVendor(vendor);
+        logger.info(`GPU vendor: ${vendor}`);
+        return vendor === 'nvidia';
+      },
+      { logResult: true }
+    )
+  );
+
+  ipcMain.handle('get-inference-backend-info',
+    createIpcHandler(
+      'get-inference-backend-info',
+      async () => {
+        const vendor = await detectGpuVendor(configManager.getGpuVendor());
+        await configManager.setGpuVendor(vendor);
+        const backend = getBackendsForVendor(vendor)[0];
+        logger.info(`GPU vendor: ${vendor}; recommended inference backend: ${backend}`);
+        return { hasCudaSupport: vendor === 'nvidia', backend };
+      },
+      { logResult: true }
+    )
+  );
+
+  // One setup at a time. A second request (the renderer reloaded mid-setup
+  // and the button was pressed again, say) joins the running one instead of
+  // starting another pip into the same environment.
+  const setupFlight = new SingleFlight<'setup', SetupResult>();
+
+  const runSetup = async (): Promise<SetupResult> => {
+    try {
+      await dependencyManager.setupDependencies();
+    } catch (error) {
+      // setupDependencies already sent the 'error' event; this is the same
+      // verdict for the invoke's reply, which the renderer also acts on.
+      const failure = describeInstallFailure(error, 'Setup');
+      return { ...failureResult(failure, logger.getLogPath()), phase: 'core' };
+    }
+    // Reload config after setup to get the stock config with model metadata
+    await configManager.load();
+    logger.info('Config reloaded after core setup');
+
+    // Auto-install plugins as the final phase of unified setup.
+    logger.info('Starting plugin install phase of unified setup');
+    const pluginResult = await pluginInstaller.installDependenciesForSetup();
+    if (!pluginResult.success) {
+      logger.error(`Plugin install failed during setup: ${pluginResult.summary ?? pluginResult.error}`);
+      // pluginInstaller already emitted a setup-progress error event with
+      // component='Plugins'. Return failure so the renderer can show recovery UI.
+      return { ...pluginResult, phase: 'plugins' };
+    }
+
+    await configManager.load();
+
+    // Final unified setup completion event — fires only after BOTH phases succeed.
+    pluginInstaller.emitSetupComplete();
+    return { ...pluginResult, success: true };
+  };
+
+  ipcMain.handle('setup-dependencies',
+    createIpcHandler(
+      'setup-dependencies',
+      () => setupFlight.run('setup', runSetup, () => ({ success: false, alreadyRunning: true })),
+      { useLogSeparator: true }
+    )
+  );
+
+  // Plugin dependency handlers
+  ipcMain.handle('install-plugin-dependencies', async (_event, mode?: unknown) => {
+    const installMode = mode === 'complete' ? 'complete' : 'partial';
+    logger.info(`Installing plugin dependencies (${installMode})`);
+    try {
+      const result = await pluginInstaller.installDependencies(installMode);
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error installing plugin dependencies:', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  });
+
+  ipcMain.handle('uninstall-plugin-dependencies', async () => {
+    logger.info('Uninstalling plugin dependencies');
+    try {
+      const result = await pluginInstaller.uninstallDependencies();
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error uninstalling plugin dependencies:', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  });
+
+  ipcMain.handle('check-plugin-dependencies', async () => {
+    logger.info('Checking plugin dependencies');
+    try {
+      const result = await pluginInstaller.checkInstalled();
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error checking plugin dependencies:', errorMsg);
+      return { installed: false, packages: [] };
+    }
+  });
+
+  ipcMain.handle('cancel-plugin-dependency-install', async () => {
+    logger.info('Cancelling plugin dependency operation');
+    pluginInstaller.cancel();
+    return { success: true };
+  });
+
+  ipcMain.handle('retry-setup-plugins', async () => {
+    logger.info('User-initiated retry of plugin install (setup mode)');
+    try {
+      const result = await pluginInstaller.installDependenciesForSetup();
+      if (result.success) {
+        await configManager.load();
+        pluginInstaller.emitSetupComplete();
+      }
+      return result;
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      logger.error('Error retrying plugin install:', errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  });
+}

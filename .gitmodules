@@ -1,0 +1,3 @@
+[submodule "native/ntsc-simulator"]
+	path = native/ntsc-simulator
+	url = https://github.com/Kim2091/ntsc-simulator

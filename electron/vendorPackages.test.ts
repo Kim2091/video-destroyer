@@ -1,0 +1,404 @@
+import { describe, it, expect, vi } from 'vitest';
+
+// vendorPackages transitively imports constants.ts (directly and through the
+// provider registry), which reads app paths at module scope.
+vi.mock('electron', async () => {
+  const p = await import('path');
+  const o = await import('os');
+  const root = p.join(o.tmpdir(), `vk-vendorpkg-test-${process.pid}`);
+  return {
+    app: {
+      isPackaged: false,
+      getAppPath: () => root,
+      getPath: () => root,
+    },
+  };
+});
+
+vi.mock('./logger', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+}));
+
+import { VAPOURSYNTH_PIP_SPEC } from './constants';
+import type { GpuVendor } from './gpuDetection';
+import {
+  computeVendorPurge,
+  evaluateInstallState,
+  getBackendPipPackages,
+  getBackendsForVendor,
+  getCheckPackageNames,
+  getPypiPackages,
+  getTorchInstall,
+  getNoDepsPackages,
+  UNINSTALL_PACKAGE_NAMES,
+  VS_DEEPDEINTERLACE_SPEC,
+} from './vendorPackages';
+
+const NON_NVIDIA: GpuVendor[] = ['amd', 'intel', 'unknown'];
+
+describe('getBackendsForVendor', () => {
+  it('gives Windows NVIDIA TensorRT, DirectML, and NCNN', () => {
+    expect(getBackendsForVendor('nvidia', 'win32')).toEqual(['tensorrt', 'directml', 'ncnn']);
+  });
+
+  it('gives Windows AMD DirectML, NCNN, and MIGraphX as a non-default option', () => {
+    expect(getBackendsForVendor('amd', 'win32')).toEqual(['directml', 'ncnn', 'migraphx']);
+  });
+
+  it.each(['intel', 'unknown'] as GpuVendor[])('gives Windows %s DirectML and NCNN', (vendor) => {
+    expect(getBackendsForVendor(vendor, 'win32')).toEqual(['directml', 'ncnn']);
+  });
+
+  it('uses NCNN as the Linux default, with TensorRT on NVIDIA and MIGraphX on AMD as options', () => {
+    expect(getBackendsForVendor('nvidia', 'linux')).toEqual(['ncnn', 'tensorrt']);
+    expect(getBackendsForVendor('amd', 'linux')).toEqual(['ncnn', 'migraphx']);
+    for (const vendor of ['intel', 'unknown'] as GpuVendor[]) {
+      expect(getBackendsForVendor(vendor, 'linux')).toEqual(['ncnn']);
+    }
+  });
+
+  it('does not treat unsupported platforms as Linux', () => {
+    expect(getBackendsForVendor('nvidia', 'darwin')).toEqual([]);
+    expect(getBackendsForVendor('amd', 'darwin')).toEqual([]);
+  });
+
+  it('uses the current platform when none is supplied', () => {
+    for (const vendor of ['nvidia', ...NON_NVIDIA] as GpuVendor[]) {
+      expect(getBackendsForVendor(vendor)).toEqual(getBackendsForVendor(vendor, process.platform));
+    }
+  });
+});
+
+describe('getBackendPipPackages', () => {
+  it('includes the mlrt-ort pin for every Windows vendor', () => {
+    for (const vendor of ['nvidia', ...NON_NVIDIA] as GpuVendor[]) {
+      expect(getBackendPipPackages(vendor, 'win32').some(spec => /^vapoursynth-mlrt-ort==/.test(spec))).toBe(true);
+    }
+  });
+
+  it('includes the mlrt-trt pin only on Windows NVIDIA', () => {
+    expect(getBackendPipPackages('nvidia', 'win32').some(spec => spec.startsWith('vapoursynth-mlrt-trt=='))).toBe(true);
+    // The engine builder imports the TensorRT Python bindings
+    expect(getBackendPipPackages('nvidia', 'win32')).toContain('tensorrt-cu13');
+    for (const vendor of NON_NVIDIA) {
+      expect(getBackendPipPackages(vendor, 'win32').some(spec => spec.startsWith('vapoursynth-mlrt-trt'))).toBe(false);
+    }
+  });
+
+  it('asks pip for MIGraphX on Linux AMD only; Windows gets it from the GitHub release', () => {
+    expect(getBackendPipPackages('amd', 'win32').some(spec => spec.startsWith('vapoursynth-mlrt-migx'))).toBe(false);
+    expect(getBackendPipPackages('amd', 'linux').some(spec => spec.startsWith('vapoursynth-mlrt-migx==')))
+      .toBe(process.arch === 'x64');
+    for (const vendor of ['nvidia', 'intel', 'unknown'] as GpuVendor[]) {
+      expect(getBackendPipPackages(vendor, 'linux').some(spec => spec.startsWith('vapoursynth-mlrt-migx'))).toBe(false);
+    }
+  });
+
+  it('includes the NCNN wheel on every supported platform', () => {
+    for (const vendor of ['nvidia', ...NON_NVIDIA] as GpuVendor[]) {
+      expect(getBackendPipPackages(vendor, 'win32')).toContain('vapoursynth-mlrt-ncnn==15.16');
+      expect(getBackendPipPackages(vendor, 'linux')).toContain('vapoursynth-mlrt-ncnn==15.16');
+    }
+  });
+});
+
+describe('getPypiPackages', () => {
+  it('installs the NVIDIA vsjetpack extras and the CUDA-only extras on NVIDIA', () => {
+    const packages = getPypiPackages('nvidia');
+    expect(packages).toContain('vsjetpack[full,nvidia]==2.2.0');
+    expect(packages).toContain('vs_colorfix[tensorrt]');
+    expect(packages).toContain('vapoursynth-nlm-cuda');
+    for (const spec of ['vapoursynth-bwdif', 'vapoursynth-deblock', 'vapoursynth-zsmooth']) {
+      expect(packages).toContain(spec);
+    }
+  });
+
+  it('installs the AMD vsjetpack extras and no TensorRT/CUDA entries on AMD', () => {
+    const packages = getPypiPackages('amd');
+    expect(packages).toContain('vsjetpack[full,amd]==2.2.0');
+    expect(packages).toContain('vs_colorfix');
+    expect(packages).not.toContain('vs_colorfix[tensorrt]');
+    expect(packages).not.toContain('vapoursynth-nlm-cuda');
+    expect(packages.some(spec => /tensorrt|cuda|nvidia/i.test(spec))).toBe(false);
+  });
+
+  it.each<GpuVendor>(['intel', 'unknown'])('uses the vendor-neutral vsjetpack extras on %s', (vendor) => {
+    const packages = getPypiPackages(vendor);
+    expect(packages).toContain('vsjetpack[full,cl,vulkan]==2.2.0');
+    expect(packages).toContain('vs_colorfix');
+    expect(packages).not.toContain('vapoursynth-nlm-cuda');
+  });
+
+  it('keeps the vendor-neutral packages for every vendor', () => {
+    for (const vendor of ['nvidia', ...NON_NVIDIA] as GpuVendor[]) {
+      const packages = getPypiPackages(vendor);
+      // Pinned, never bare: an unpinned name here would let the plugin
+      // install pull the core forward past the version the filters are
+      // verified against.
+      expect(packages).toContain(VAPOURSYNTH_PIP_SPEC);
+      expect(packages).not.toContain('vapoursynth');
+      expect(packages).toContain('vs_temporalfix');
+      expect(packages).toContain('vs_grain');
+      expect(packages).toContain('vapoursynth-mvtools');
+      expect(packages).toContain('positional-encodings');
+      expect(packages).toContain('einops');
+      expect(packages).toContain('timm');
+      expect(packages).toContain('onnxruntime');
+      expect(packages.some(spec => spec.startsWith('vsview'))).toBe(false);
+      // Backend wheels come from the providers, never from this list
+      expect(packages.some(spec => spec.startsWith('vapoursynth-mlrt'))).toBe(false);
+    }
+  });
+
+  // Floored, not bare: 2.2.0 cannot build an Undistort TensorRT engine on a
+  // 50-series GPU, so an install sitting on it has to be moved forward.
+  it('installs vs_undistort with its TensorRT dependencies only on NVIDIA', () => {
+    expect(getPypiPackages('nvidia')).toContain('vs_undistort>=2.3.1');
+    expect(getNoDepsPackages('nvidia')).toEqual(['vs_align', VS_DEEPDEINTERLACE_SPEC]);
+    for (const vendor of NON_NVIDIA) {
+      expect(getPypiPackages(vendor).some(spec => spec.startsWith('vs_undistort'))).toBe(false);
+      expect(getNoDepsPackages(vendor)).toEqual(['vs_undistort>=2.3.1', 'vs_align', VS_DEEPDEINTERLACE_SPEC]);
+    }
+  });
+
+  // Not on PyPI and without a licence file: fetched from GitHub at a pinned
+  // commit, without its torch requirement, which getTorchInstall decides.
+  it('installs vs_deepdeinterlace from a pinned GitHub commit', () => {
+    expect(VS_DEEPDEINTERLACE_SPEC).toMatch(/^vs_deepdeinterlace @ https:\/\/github\.com\/pifroggi\/vs_deepdeinterlace\/archive\/[0-9a-f]{40}\.zip$/);
+    expect(getCheckPackageNames('nvidia', 'win32')).toContain('vs-deepdeinterlace');
+    expect(UNINSTALL_PACKAGE_NAMES).toContain('vs-deepdeinterlace');
+  });
+
+  // vs_align asks for opencv-python, whose cv2 collides with the headless
+  // build's, so it comes without its dependencies and only headless is asked for.
+  it.each(['nvidia', ...NON_NVIDIA] as GpuVendor[])('installs the dataset engine packages on %s', (vendor) => {
+    expect(getPypiPackages(vendor)).toContain('opencv-python-headless');
+    expect(getPypiPackages(vendor)).not.toContain('opencv-python');
+    expect(getPypiPackages(vendor).some(spec => spec.startsWith('vs_align'))).toBe(false);
+    expect(getNoDepsPackages(vendor)).toContain('vs_align');
+    const names = getCheckPackageNames(vendor, 'win32');
+    expect(names).toContain('vs-align');
+    expect(names).toContain('opencv-python-headless');
+  });
+});
+
+describe('getTorchInstall', () => {
+  it('uses the CUDA wheel index on NVIDIA', () => {
+    const install = getTorchInstall('nvidia');
+    expect(install.packages).toEqual(['torch', 'torchvision']);
+    expect(install.extraArgs).toEqual(['--index-url', 'https://download.pytorch.org/whl/cu130']);
+  });
+
+  it.each(NON_NVIDIA)('uses the default PyPI index (CPU wheels) on Windows %s', (vendor) => {
+    const install = getTorchInstall(vendor, 'win32');
+    expect(install.packages).toEqual(['torch', 'torchvision']);
+    expect(install.extraArgs).toEqual([]);
+  });
+
+  // Plain PyPI torch on Linux is the CUDA build, with ~2 GB of nvidia-* wheels
+  it.each(NON_NVIDIA)('uses the CPU wheel index on Linux %s', (vendor) => {
+    expect(getTorchInstall(vendor, 'linux').extraArgs)
+      .toEqual(['--index-url', 'https://download.pytorch.org/whl/cpu']);
+  });
+
+  it('uses the CUDA wheel index on Linux NVIDIA too', () => {
+    expect(getTorchInstall('nvidia', 'linux').extraArgs)
+      .toEqual(['--index-url', 'https://download.pytorch.org/whl/cu130']);
+  });
+});
+
+describe('getCheckPackageNames', () => {
+  it('requires all Windows NVIDIA backend wheels', () => {
+    const names = getCheckPackageNames('nvidia', 'win32');
+    expect(names).toContain('vapoursynth-mlrt-trt');
+    expect(names).toContain('vapoursynth-mlrt-ort');
+    expect(names).toContain('vapoursynth');
+    expect(names).toContain('torch');
+  });
+
+  it.each(NON_NVIDIA)('requires the Windows ORT wheel, but not TensorRT, on %s', (vendor) => {
+    const names = getCheckPackageNames(vendor, 'win32');
+    expect(names).toContain('vapoursynth-mlrt-ort');
+    expect(names).not.toContain('vapoursynth-mlrt-trt');
+  });
+
+  it.each([...NON_NVIDIA, 'nvidia'] as GpuVendor[])('names every package the %s install asks pip for, once', (vendor) => {
+    const names = getCheckPackageNames(vendor, 'win32');
+    expect(new Set(names).size).toBe(names.length);
+    for (const name of ['vapoursynth', 'torch', 'vsjetpack', 'vs-temporalfix', 'vs-undistort',
+      'vs-colorfix', 'vs-grain', 'vs-tiletools', 'vapoursynth-mvtools', 'vapoursynth-timecube', 'timm']) {
+      expect(names).toContain(name);
+    }
+    expect(names.includes('vapoursynth-nlm-cuda')).toBe(vendor === 'nvidia');
+  });
+
+  it('returns PEP 503-normalized names', () => {
+    for (const name of getCheckPackageNames('nvidia', 'win32')) {
+      expect(name).toBe(name.toLowerCase());
+      expect(name).not.toContain('_');
+      expect(name).not.toMatch(/[[=<>]/);
+    }
+  });
+});
+
+describe('UNINSTALL_PACKAGE_NAMES', () => {
+  it('lists vendor-neutral dist names only (no extras, no pins)', () => {
+    expect(UNINSTALL_PACKAGE_NAMES).toContain('torch');
+    expect(UNINSTALL_PACKAGE_NAMES).toContain('vsjetpack');
+    expect(UNINSTALL_PACKAGE_NAMES).toContain('vs-align');
+    for (const name of UNINSTALL_PACKAGE_NAMES) {
+      expect(name).not.toMatch(/[[=<>]/);
+    }
+  });
+});
+
+describe('evaluateInstallState', () => {
+  it('reports not installed when packages are missing', () => {
+    expect(evaluateInstallState('nvidia', 'nvidia', ['vsjetpack'])).toEqual({
+      installed: false,
+      reason: 'missing-packages',
+    });
+  });
+
+  it('reports a vendor mismatch when the installed set targets another vendor', () => {
+    expect(evaluateInstallState('nvidia', 'amd', [])).toEqual({
+      installed: false,
+      reason: 'vendor-mismatch',
+    });
+    expect(evaluateInstallState('amd', 'nvidia', [])).toEqual({
+      installed: false,
+      reason: 'vendor-mismatch',
+    });
+  });
+
+  it('backfills NVIDIA for installs predating vendor tracking', () => {
+    expect(evaluateInstallState('nvidia', undefined, [])).toEqual({
+      installed: true,
+      backfillVendor: 'nvidia',
+      reason: 'ok',
+    });
+  });
+
+  it.each(NON_NVIDIA)('reports legacy installs on %s as not installed (no backfill)', (vendor) => {
+    const state = evaluateInstallState(vendor, undefined, []);
+    expect(state.installed).toBe(false);
+    expect(state.reason).toBe('legacy-non-nvidia');
+    expect(state.backfillVendor).toBeUndefined();
+  });
+
+  it('reports a matching, complete install as installed', () => {
+    for (const vendor of ['nvidia', ...NON_NVIDIA] as GpuVendor[]) {
+      expect(evaluateInstallState(vendor, vendor, [])).toEqual({ installed: true, reason: 'ok' });
+    }
+  });
+
+  it('prefers the missing-packages reason over a vendor mismatch', () => {
+    expect(evaluateInstallState('amd', 'nvidia', ['vsjetpack']).reason).toBe('missing-packages');
+  });
+});
+
+describe('computeVendorPurge', () => {
+  const cudaStack = [
+    { name: 'tensorrt', version: '10.13.0' },
+    { name: 'tensorrt-cu13', version: '10.13.0' },
+    { name: 'tensorrt-rtx-cu13', version: '10.13.0' },
+    { name: 'nvidia-cudnn-cu13', version: '9.8.0' },
+    { name: 'vapoursynth-mlrt-trt', version: '16.1' },
+    { name: 'vapoursynth-mlrt-ort-cuda', version: '16.1' },
+    { name: 'vapoursynth-mlrt-ort', version: '16.1' },
+    { name: 'vapoursynth-nlm-cuda', version: '1.0' },
+    { name: 'vapoursynth', version: '79' },
+  ];
+
+  it('purges the CUDA/TensorRT stack on AMD but never the plain ORT wheel', () => {
+    const purge = computeVendorPurge('amd', cudaStack);
+    expect(purge).toContain('tensorrt-cu13');
+    expect(purge).toContain('tensorrt-rtx-cu13');
+    expect(purge).toContain('nvidia-cudnn-cu13');
+    expect(purge).toContain('vapoursynth-mlrt-trt');
+    expect(purge).toContain('vapoursynth-mlrt-ort-cuda');
+    expect(purge).toContain('vapoursynth-nlm-cuda');
+    expect(purge).not.toContain('vapoursynth-mlrt-ort');
+    expect(purge).not.toContain('vapoursynth');
+  });
+
+  it('keeps the CUDA stack on NVIDIA', () => {
+    expect(computeVendorPurge('nvidia', cudaStack)).toEqual([]);
+  });
+
+  it('purges the HIP plugins off AMD (including the hiprtc variant)', () => {
+    const hipStack = [
+      { name: 'vapoursynth-bm3dhip', version: '1.0' },
+      { name: 'vapoursynth-dfttest2-hip', version: '1.0' },
+      { name: 'vapoursynth-dfttest2-hiprtc', version: '1.0' },
+      { name: 'vapoursynth-mlrt-migx', version: '16.1' },
+    ];
+    const purge = computeVendorPurge('nvidia', hipStack);
+    expect(purge).toEqual([
+      'vapoursynth-bm3dhip',
+      'vapoursynth-dfttest2-hip',
+      'vapoursynth-dfttest2-hiprtc',
+      'vapoursynth-mlrt-migx',
+    ]);
+    expect(computeVendorPurge('amd', hipStack)).toEqual([]);
+  });
+
+  it('normalizes installed names before matching', () => {
+    expect(computeVendorPurge('amd', [{ name: 'NVIDIA_cuDNN_cu13', version: '9.8.0' }]))
+      .toEqual(['nvidia-cudnn-cu13']);
+  });
+
+  it('purges a CUDA torch on a non-NVIDIA machine', () => {
+    const purge = computeVendorPurge('amd', [
+      { name: 'torch', version: '2.9.0+cu130' },
+      { name: 'torchvision', version: '0.24.0+cu130' },
+    ]);
+    expect(purge).toContain('torch');
+    expect(purge).toContain('torchvision');
+  });
+
+  it('purges a CPU torch on an NVIDIA machine', () => {
+    const purge = computeVendorPurge('nvidia', [
+      { name: 'torch', version: '2.9.0' },
+      { name: 'torchvision', version: '0.24.0' },
+    ], 'win32');
+    expect(purge).toEqual(['torch', 'torchvision']);
+  });
+
+  it('leaves a matching torch flavor alone in both directions', () => {
+    expect(computeVendorPurge('nvidia', [{ name: 'torch', version: '2.9.0+cu130' }], 'win32')).toEqual([]);
+    expect(computeVendorPurge('amd', [{ name: 'torch', version: '2.9.0' }], 'win32')).toEqual([]);
+  });
+
+  it('treats an untagged torch as the CUDA build on Linux', () => {
+    // What plain PyPI installed for a Linux AMD user, with triton beside it
+    expect(computeVendorPurge('amd', [
+      { name: 'torch', version: '2.14.1' },
+      { name: 'torchvision', version: '0.29.1' },
+      { name: 'triton', version: '3.8.0' },
+    ], 'linux')).toEqual(['triton', 'torch', 'torchvision']);
+    expect(computeVendorPurge('amd', [{ name: 'torch', version: '2.14.1+cpu' }], 'linux')).toEqual([]);
+    expect(computeVendorPurge('nvidia', [{ name: 'torch', version: '2.14.1+cpu' }], 'linux')).toEqual(['torch', 'torchvision']);
+  });
+
+  it("purges vs_undistort's CUDA bindings off NVIDIA", () => {
+    expect(computeVendorPurge('amd', [
+      { name: 'cuda-python', version: '13.0.0' },
+      { name: 'cuda-bindings', version: '13.0.0' },
+      { name: 'vs-undistort', version: '2.3.1' },
+    ], 'win32')).toEqual(['cuda-python', 'cuda-bindings']);
+  });
+
+  it('returns nothing for an empty environment', () => {
+    expect(computeVendorPurge('unknown', [])).toEqual([]);
+  });
+
+  it('never lists the same package twice', () => {
+    const purge = computeVendorPurge('intel', [
+      { name: 'torch', version: '2.9.0+cu130' },
+      { name: 'torchvision', version: '0.24.0+cu130' },
+      { name: 'tensorrt-cu13', version: '10.13.0' },
+    ]);
+    expect(new Set(purge).size).toBe(purge.length);
+  });
+});

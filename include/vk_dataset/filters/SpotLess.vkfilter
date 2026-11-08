@@ -1,0 +1,17 @@
+name = "SpotLess"
+category = ["Hybrid", "Denoising"]
+code = """
+# Strong temporal denoising using MVTools
+# From hybrid_filters/SpotLess.py
+import sys
+sys.path.insert(0, r'hybrid_filters')
+from SpotLess import SpotLess
+
+# The default smoother='tmedian' hardcodes the now-gone standalone tmedian
+# plugin; the script's own 'zsmooth' option reaches the same
+# TemporalMedian on the still-present zsmooth plugin.
+clip = SpotLess(clip, radT=1, thsad=10000, chroma=True, truemotion=True, smoother='zsmooth')"""
+description = "Strong temporal denoising optimized for removing spots and noise"
+
+[metadata]
+createdAt = "2026-02-01T00:00:00.000Z"

@@ -1,0 +1,303 @@
+{
+ "version": 1,
+ "seed": 11,
+ "name": "11. Damage where it happens",
+ "description": "Real damage depends on the picture: banding shows in flat areas, grain in the shadows, noise-reduction smear on motion. Masks find those areas per frame and Masked Merge puts each damage only there, then everything is compressed.",
+ "summary": "Banding, grain and smear only where real",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "ui": {
+    "x": 0,
+    "y": 0
+   },
+   "note": "Choose your high-quality video."
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "ui": {
+    "x": 300,
+    "y": 0
+   },
+   "note": "One chunk per scene."
+  },
+  {
+   "id": "down",
+   "type": "resample",
+   "params": {
+    "size": "scale",
+    "scale": 0.5
+   },
+   "ui": {
+    "x": 600,
+    "y": 300
+   },
+   "note": "Half size."
+  },
+  {
+   "id": "band",
+   "type": "quantize",
+   "params": {
+    "bits": {
+     "int": [
+      5,
+      6
+     ]
+    }
+   },
+   "ui": {
+    "x": 900,
+    "y": 600
+   },
+   "note": "Coarse brightness and colour steps."
+  },
+  {
+   "id": "flat",
+   "type": "flat_mask",
+   "params": {
+    "threshold": {
+     "uniform": [
+      0.01,
+      0.03
+     ]
+    }
+   },
+   "ui": {
+    "x": 900,
+    "y": 900
+   },
+   "note": "Smooth areas."
+  },
+  {
+   "id": "banded",
+   "type": "masked_merge",
+   "params": {},
+   "ui": {
+    "x": 1200,
+    "y": 300
+   },
+   "note": "Banding only in smooth areas."
+  },
+  {
+   "id": "grain",
+   "type": "film_grain",
+   "params": {
+    "strength": {
+     "uniform": [
+      3.5,
+      8.0
+     ]
+    },
+    "chroma": {
+     "uniform": [
+      0.1,
+      0.3
+     ]
+    }
+   },
+   "ui": {
+    "x": 1500,
+    "y": 600
+   },
+   "note": "Strong changing grain."
+  },
+  {
+   "id": "shadows",
+   "type": "luma_mask",
+   "params": {
+    "low": 0.0,
+    "high": {
+     "uniform": [
+      0.2,
+      0.35
+     ]
+    }
+   },
+   "ui": {
+    "x": 1500,
+    "y": 900
+   },
+   "note": "The shadows."
+  },
+  {
+   "id": "grainy",
+   "type": "masked_merge",
+   "params": {
+    "strength": {
+     "uniform": [
+      0.6,
+      1.0
+     ]
+    }
+   },
+   "ui": {
+    "x": 1800,
+    "y": 300
+   },
+   "note": "Grain mostly in the shadows."
+  },
+  {
+   "id": "smear",
+   "type": "player_dnr",
+   "params": {
+    "strength": {
+     "uniform": [
+      0.6,
+      1.0
+     ]
+    }
+   },
+   "ui": {
+    "x": 2100,
+    "y": 600
+   },
+   "note": "Noise reduction that smears."
+  },
+  {
+   "id": "moving",
+   "type": "motion_mask",
+   "params": {},
+   "ui": {
+    "x": 2100,
+    "y": 900
+   },
+   "note": "Where the picture moves."
+  },
+  {
+   "id": "smeared",
+   "type": "masked_merge",
+   "params": {
+    "probability": 0.5
+   },
+   "ui": {
+    "x": 2400,
+    "y": 300
+   },
+   "note": "Smear on motion, half the chunks."
+  },
+  {
+   "id": "comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264"
+   },
+   "ui": {
+    "x": 2700,
+    "y": 300
+   },
+   "note": "Compression last."
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "ui": {
+    "x": 3000,
+    "y": 0
+   },
+   "note": "HR from the chunk, LR from the damage chain."
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "ui": {
+    "x": 3300,
+    "y": 0
+   },
+   "note": "Pick an output folder."
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.clip"
+  },
+  {
+   "from": "down.clip",
+   "to": "band.clip"
+  },
+  {
+   "from": "down.clip",
+   "to": "flat.clip"
+  },
+  {
+   "from": "down.clip",
+   "to": "banded.base"
+  },
+  {
+   "from": "band.clip",
+   "to": "banded.overlay"
+  },
+  {
+   "from": "flat.mask",
+   "to": "banded.mask"
+  },
+  {
+   "from": "banded.clip",
+   "to": "grain.clip"
+  },
+  {
+   "from": "banded.clip",
+   "to": "shadows.clip"
+  },
+  {
+   "from": "banded.clip",
+   "to": "grainy.base"
+  },
+  {
+   "from": "grain.clip",
+   "to": "grainy.overlay"
+  },
+  {
+   "from": "shadows.mask",
+   "to": "grainy.mask"
+  },
+  {
+   "from": "grainy.clip",
+   "to": "smear.clip"
+  },
+  {
+   "from": "grainy.clip",
+   "to": "moving.clip"
+  },
+  {
+   "from": "grainy.clip",
+   "to": "smeared.base"
+  },
+  {
+   "from": "smear.clip",
+   "to": "smeared.overlay"
+  },
+  {
+   "from": "moving.mask",
+   "to": "smeared.mask"
+  },
+  {
+   "from": "smeared.clip",
+   "to": "comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "comp.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

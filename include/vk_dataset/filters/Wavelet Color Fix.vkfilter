@@ -1,0 +1,23 @@
+name = "Wavelet Color Fix"
+code = """
+# Full Docs: https://github.com/pifroggi/vs_colorfix?tab=readme-ov-file#wavelet-color-fix
+
+wavelets     = 4       # Higher is a more global color fix, lower is more local.
+backend      = "auto"  # "cpu", "tensorrt", "directml", "ncnn", or "auto" to use Vapourkit's global setting.
+num_streams  = 2       # Number of parallel GPU streams.
+gpu_id       = 0       # The GPU to use.
+
+
+import vs_colorfix
+backend = backend.lower()
+backend = VK_BACKEND if backend == "auto" else backend
+float_format = clip.format.replace(sample_type=vs.FLOAT, bits_per_sample=16).id
+orig_clip_float = core.resize.Bilinear(original_clip, format=float_format)
+clip_float = core.resize.Point(clip, format=float_format)
+clip_float = vs_colorfix.wavelet(clip_float, orig_clip_float, wavelets=wavelets, backend=backend, num_streams=num_streams, gpu_id=gpu_id)
+clip = core.resize.Point(clip_float, format=clip.format.id)"""
+category = [ "Color Modification" ]
+description = "Correct for color shift by matching the average color of the clip to that of the original input clip. Better results than Average Color Fix, but much slower."
+
+[metadata]
+createdAt = "2026-08-15T02:56:57.410Z"

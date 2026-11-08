@@ -1,0 +1,167 @@
+{
+ "version": 1,
+ "seed": 0,
+ "name": "7. Clean up a dataset's HR targets",
+ "description": "VSR-Dataset-Creator's Denoise + Color: improves the HR targets of an existing dataset into hr_p/, leaving hr/ and lr/ untouched. Switch on the steps you need.",
+ "summary": "Denoise and colour-fix HR targets",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_dataset",
+   "params": {
+    "directory": ""
+   },
+   "ui": {
+    "x": 0,
+    "y": 0
+   },
+   "note": "The dataset folder (with hr/ and lr/)."
+  },
+  {
+   "id": "denoise",
+   "type": "denoise_hr",
+   "params": {
+    "model": "",
+    "tile_width": 512,
+    "tile_height": 512,
+    "overlap": 32
+   },
+   "ui": {
+    "x": 300,
+    "y": 0
+   },
+   "note": "Needs the denoise model in ONNX format."
+  },
+  {
+   "id": "darken",
+   "type": "fast_line_darken",
+   "enabled": false,
+   "ui": {
+    "x": 600,
+    "y": 0
+   },
+   "note": "Off: stronger line art."
+  },
+  {
+   "id": "dehalo",
+   "type": "fine_dehalo",
+   "enabled": false,
+   "ui": {
+    "x": 900,
+    "y": 0
+   },
+   "note": "Off: remove halos."
+  },
+  {
+   "id": "prism",
+   "type": "prism_deh264",
+   "params": {
+    "model": "",
+    "strength_crf": 20.0,
+    "tile_size": 512,
+    "overlap": 64
+   },
+   "enabled": false,
+   "ui": {
+    "x": 1200,
+    "y": 0
+   },
+   "note": "Off: remove H.264 damage (needs the Prism model)."
+  },
+  {
+   "id": "gamma",
+   "type": "match_gamma",
+   "params": {
+    "direction": "hr_to_lr",
+    "scope": "scene"
+   },
+   "enabled": false,
+   "ui": {
+    "x": 1500,
+    "y": 0
+   },
+   "note": "Off: match HR gamma to LR."
+  },
+  {
+   "id": "tone",
+   "type": "tone_adjust",
+   "params": {
+    "brightness": 0.0,
+    "contrast": 0.0,
+    "gamma": 1.0
+   },
+   "enabled": false,
+   "ui": {
+    "x": 1800,
+    "y": 0
+   },
+   "note": "Off: fixed brightness / contrast / gamma."
+  },
+  {
+   "id": "anicc",
+   "type": "anicc",
+   "params": {
+    "model": ""
+   },
+   "ui": {
+    "x": 2100,
+    "y": 0
+   },
+   "note": "Needs the AniCC model in ONNX format."
+  },
+  {
+   "id": "out",
+   "type": "write_processed",
+   "params": {
+    "directory": ""
+   },
+   "ui": {
+    "x": 2400,
+    "y": 0
+   },
+   "note": "Writes hr_p/ beside hr/."
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.hr",
+   "to": "denoise.clip"
+  },
+  {
+   "from": "denoise.clip",
+   "to": "darken.clip"
+  },
+  {
+   "from": "darken.clip",
+   "to": "dehalo.clip"
+  },
+  {
+   "from": "dehalo.clip",
+   "to": "prism.clip"
+  },
+  {
+   "from": "prism.clip",
+   "to": "gamma.hr"
+  },
+  {
+   "from": "src.lr",
+   "to": "gamma.lr"
+  },
+  {
+   "from": "gamma.hr",
+   "to": "tone.clip"
+  },
+  {
+   "from": "tone.clip",
+   "to": "anicc.hr"
+  },
+  {
+   "from": "gamma.lr",
+   "to": "anicc.lr"
+  },
+  {
+   "from": "anicc.hr",
+   "to": "out.hr"
+  }
+ ]
+}

@@ -1,0 +1,188 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Colour system. These mirror the ink ramp and
+   accent in tailwind.config.js; keep them in sync. */
+:root {
+  --ink-950: 14 15 16;
+  --ink-900: 23 24 25;
+  --ink-850: 31 33 35;
+  --ink-800: 41 43 46;
+  --ink-750: 51 53 56;
+  --ink-700: 63 65 70;
+  --ink-600: 82 85 91;
+  --ink-500: 135 138 146;
+  --ink-400: 161 164 170;
+  --ink-300: 212 214 216;
+  --ink-200: 231 232 233;
+  --ink-100: 244 245 245;
+  --ink-50: 250 250 250;
+  --accent: #3fb9a6;
+  --accent-rgb: 63, 185, 166;
+  --accent-200: 187 231 225;
+  --accent-300: 149 218 208;
+  --accent-400: 103 203 188;
+  --accent-500: 63 185 166;
+  --accent-600: 49 155 139;
+  --accent-700: 38 126 112;
+  --accent-800: 28 95 85;
+  --accent-900: 18 63 57;
+  --accent-ink: 4 18 15;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: rgb(var(--ink-950));
+  color: rgb(var(--ink-200));
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Native controls.
+   `color-scheme` makes Chromium paint select popups, spinners and the default
+   scrollbars dark instead of light. `accent-color` colours checkboxes, radios
+   and range thumbs — Tailwind's text-* utilities do NOT do this without
+   @tailwindcss/forms, which is why every checkbox rendered in the browser's
+   default blue no matter what the theme said. */
+:root {
+  color-scheme: dark;
+}
+
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"],
+progress {
+  accent-color: var(--accent);
+}
+
+#root {
+  width: 100%;
+  height: 100vh;
+}
+
+/* Custom Scrollbar Styling */
+/* Webkit browsers (Chrome, Edge, Safari) */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--ink-900));
+  border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--ink-700, 63 65 70));
+  border-radius: 6px;
+  border: 2px solid rgb(var(--ink-900));
+  transition: background 0.2s ease;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--ink-600, 82 85 91));
+  border: 2px solid rgb(var(--ink-850));
+}
+
+::-webkit-scrollbar-corner {
+  background: rgb(var(--ink-900));
+}
+
+/* Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--ink-700, 63 65 70)) rgb(var(--ink-900));
+}
+
+/* Notification Toast Animation */
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+/* Dataset workspace canvas (React Flow), on the ink ramp and accent. */
+.react-flow.vk-dataset-flow {
+  --xy-background-color: rgb(var(--ink-950));
+  --xy-background-pattern-dots-color: rgb(var(--ink-750));
+  --xy-edge-stroke: rgb(var(--ink-500));
+  --xy-edge-stroke-selected: rgb(var(--ink-200));
+  --xy-connectionline-stroke: rgb(var(--accent-400));
+  --xy-connectionline-stroke-width: 2;
+  --xy-selection-background-color: rgba(var(--accent-rgb), 0.08);
+  --xy-selection-border: 1px dashed rgba(var(--accent-rgb), 0.7);
+  --xy-controls-button-background-color: rgb(var(--ink-850));
+  --xy-controls-button-background-color-hover: rgb(var(--ink-800));
+  --xy-controls-button-color: rgb(var(--ink-400));
+  --xy-controls-button-color-hover: rgb(var(--ink-200));
+  --xy-controls-button-border-color: rgb(var(--ink-750));
+  --xy-controls-box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.react-flow.vk-dataset-flow .react-flow__handle.connectingfrom,
+.react-flow.vk-dataset-flow .react-flow__handle.valid {
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.35);
+}
+
+/*
+ * A setting's value socket: hidden until its card is hovered or a value wire
+ * is being drawn, and always shown while linked.
+ */
+.react-flow.vk-dataset-flow .react-flow__handle.vk-param-socket {
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.react-flow.vk-dataset-flow .react-flow__node:hover .react-flow__handle.vk-param-socket {
+  opacity: 0.55;
+}
+
+.react-flow.vk-dataset-flow .react-flow__node:hover .react-flow__handle.vk-param-socket:hover,
+.react-flow.vk-dataset-flow.vk-linking .react-flow__handle.vk-param-socket,
+.react-flow.vk-dataset-flow .react-flow__handle.vk-param-socket.vk-linked {
+  opacity: 1;
+}
+
+/* The region of nodes that run once per chunk, drawn behind the cards. */
+.react-flow.vk-dataset-flow .react-flow__viewport-portal {
+  z-index: -1;
+  pointer-events: none;
+}
+
+.vk-chunk-region {
+  border-color: rgba(214, 162, 67, 0.45);
+  background: rgba(214, 162, 67, 0.05);
+  color: rgb(214, 162, 67);
+}
+
+/* The region's label takes the pointer, for its tooltip. */
+.vk-chunk-label {
+  pointer-events: auto;
+}
+
+.react-flow.vk-dataset-flow .react-flow__minimap {
+  --xy-minimap-background-color: rgb(var(--ink-900));
+  --xy-minimap-mask-background-color: rgb(var(--ink-950) / 0.6);
+  --xy-minimap-mask-stroke-color: rgb(var(--ink-600));
+  --xy-minimap-mask-stroke-width: 1;
+  border: 1px solid rgb(var(--ink-750));
+  border-radius: 6px;
+  overflow: hidden;
+}

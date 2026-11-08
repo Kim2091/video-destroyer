@@ -1,0 +1,17 @@
+name = "Tile"
+code = """
+# Full Docs: https://github.com/pifroggi/vs_tiletools?tab=readme-ov-file#tile
+
+width   = 256      # Width of each tile.
+height  = 256      # Height of each tile.
+overlap = 16       # Tile overlap.
+padding = "mirror" # Padding can be mirror, wrap, repeat, fillmargins, fixborders, telea, ns, fsr, black, a custom color in 8-bit scale [128, 128, 128], or discard to remove tiles that are too small.
+
+
+import vs_tiletools
+clip = vs_tiletools.tile(clip, width=width, height=height, overlap=overlap, padding=padding)"""
+category = [ "Tiling" ]
+description = "Splits each frame into tiles of fixed dimensions."
+
+[metadata]
+createdAt = "2026-08-15T02:11:48.102Z"

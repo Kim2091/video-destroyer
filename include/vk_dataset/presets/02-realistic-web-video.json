@@ -1,0 +1,231 @@
+{
+ "version": 1,
+ "seed": 2,
+ "name": "2. Realistic web video",
+ "description": "Damage like typical streaming or web video: slight lens softness and camera noise on some chunks, light sharpening, scaling to the model size, then H.264 with a second encode on some chunks, as an upload re-encoded by the site. Blank and motionless sequences are dropped.",
+ "summary": "Streaming-style softness, noise and compression",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "note": "Choose your high-quality video (or a folder of videos).",
+   "ui": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": "sdr",
+   "type": "tonemap",
+   "params": {},
+   "note": "Safe to keep: SDR video passes through.",
+   "ui": {
+    "x": 300,
+    "y": 0
+   }
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "note": "One chunk per scene, each with its own random settings.",
+   "ui": {
+    "x": 600,
+    "y": 0
+   }
+  },
+  {
+   "id": "lens",
+   "type": "optics_blur",
+   "params": {
+    "probability": 0.3,
+    "sigma": {
+     "uniform": [
+      0.2,
+      0.8
+     ]
+    }
+   },
+   "note": "Slight softness, 30%.",
+   "ui": {
+    "x": 900,
+    "y": 300
+   }
+  },
+  {
+   "id": "noise",
+   "type": "sensor_noise",
+   "params": {
+    "probability": 0.4
+   },
+   "note": "Camera noise, 40%.",
+   "ui": {
+    "x": 1200,
+    "y": 300
+   }
+  },
+  {
+   "id": "sharp",
+   "type": "sharpen",
+   "params": {
+    "probability": 0.2,
+    "radius": {
+     "uniform": [
+      0.5,
+      1.2
+     ]
+    }
+   },
+   "note": "Phone-style sharpening, 20%.",
+   "ui": {
+    "x": 1500,
+    "y": 300
+   }
+  },
+  {
+   "id": "down",
+   "type": "scale_to_model",
+   "params": {
+    "scale": 2
+   },
+   "note": "Half size, for a 2x model.",
+   "ui": {
+    "x": 1800,
+    "y": 300
+   }
+  },
+  {
+   "id": "comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264"
+   },
+   "note": "H.264, as uploaded.",
+   "ui": {
+    "x": 2100,
+    "y": 300
+   }
+  },
+  {
+   "id": "reup",
+   "type": "codec",
+   "label": "Re-encode",
+   "params": {
+    "probability": 0.4,
+    "profile": "web_h264",
+    "quality": {
+     "uniform": [
+      0.3,
+      1.0
+     ]
+    }
+   },
+   "note": "The site encodes it again, 40%.",
+   "ui": {
+    "x": 2400,
+    "y": 300
+   }
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "note": "5-frame sequences; HR from the chunk, LR from the damage chain.",
+   "ui": {
+    "x": 2700,
+    "y": 0
+   }
+  },
+  {
+   "id": "blank",
+   "type": "reject_blank",
+   "params": {},
+   "note": "Drops fades and black frames.",
+   "ui": {
+    "x": 3000,
+    "y": 0
+   }
+  },
+  {
+   "id": "motion",
+   "type": "reject_motion",
+   "params": {},
+   "note": "Drops still or cut-crossing sequences.",
+   "ui": {
+    "x": 3300,
+    "y": 0
+   }
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "note": "Pick an output folder.",
+   "ui": {
+    "x": 3600,
+    "y": 0
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "sdr.clip"
+  },
+  {
+   "from": "sdr.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "lens.clip"
+  },
+  {
+   "from": "lens.clip",
+   "to": "noise.clip"
+  },
+  {
+   "from": "noise.clip",
+   "to": "sharp.clip"
+  },
+  {
+   "from": "sharp.clip",
+   "to": "down.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.hr"
+  },
+  {
+   "from": "down.clip",
+   "to": "comp.clip"
+  },
+  {
+   "from": "comp.clip",
+   "to": "reup.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "reup.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "blank.sequences"
+  },
+  {
+   "from": "blank.sequences",
+   "to": "motion.sequences"
+  },
+  {
+   "from": "motion.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

@@ -1,0 +1,262 @@
+{
+ "version": 1,
+ "seed": 4,
+ "name": "4. Analogue tape look",
+ "description": "Damage like VHS or old broadcasts, made at SD size: interlacing, sideways colour bleed, analogue sharpening, a faint ghost, tape noise, then a DVD-R style MPEG-2 encode and the player's colour upsampling.",
+ "summary": "VHS and old broadcast damage",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "note": "Choose your high-quality video (or a folder of videos).",
+   "ui": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "note": "One chunk per scene, each with its own random settings.",
+   "ui": {
+    "x": 300,
+    "y": 0
+   }
+  },
+  {
+   "id": "sd",
+   "type": "resample",
+   "params": {},
+   "note": "Down to an SD frame.",
+   "ui": {
+    "x": 600,
+    "y": 300
+   }
+  },
+  {
+   "id": "fields",
+   "type": "telecine",
+   "params": {
+    "probability": 0.5,
+    "source": "video"
+   },
+   "note": "Interlaced video, half the chunks.",
+   "ui": {
+    "x": 900,
+    "y": 300
+   }
+  },
+  {
+   "id": "bleed",
+   "type": "chroma_bleed",
+   "params": {
+    "blur": {
+     "uniform": [
+      1.5,
+      3.0
+     ]
+    },
+    "shift": {
+     "uniform": [
+      -3.0,
+      3.0
+     ]
+    }
+   },
+   "note": "Wide colour bleed and delay.",
+   "ui": {
+    "x": 1200,
+    "y": 300
+   }
+  },
+  {
+   "id": "peaking",
+   "type": "sharpen",
+   "params": {
+    "direction": "horizontal",
+    "amount": {
+     "uniform": [
+      0.5,
+      1.5
+     ]
+    }
+   },
+   "note": "Sideways analogue sharpening.",
+   "ui": {
+    "x": 1500,
+    "y": 300
+   }
+  },
+  {
+   "id": "echo",
+   "type": "ghost_echo",
+   "params": {
+    "probability": 0.3
+   },
+   "note": "Faint ghost on 30% of chunks.",
+   "ui": {
+    "x": 1800,
+    "y": 300
+   }
+  },
+  {
+   "id": "noise",
+   "type": "sensor_noise",
+   "params": {
+    "strength": {
+     "uniform": [
+      1.5,
+      4.0
+     ]
+    },
+    "size": {
+     "uniform": [
+      1.2,
+      2.0
+     ]
+    }
+   },
+   "note": "Tape noise.",
+   "ui": {
+    "x": 2100,
+    "y": 300
+   }
+  },
+  {
+   "id": "comp",
+   "type": "codec",
+   "params": {
+    "profile": "dvd_mpeg2",
+    "quality": {
+     "uniform": [
+      0.2,
+      0.9
+     ]
+    }
+   },
+   "note": "DVD-R style MPEG-2.",
+   "ui": {
+    "x": 2400,
+    "y": 300
+   }
+  },
+  {
+   "id": "fix",
+   "type": "telecine_fix",
+   "params": {},
+   "ui": {
+    "x": 2700,
+    "y": 300
+   },
+   "note": "The player deinterlaces it badly."
+  },
+  {
+   "id": "chroma",
+   "type": "chroma_subsample",
+   "params": {},
+   "note": "Player colour upsampling.",
+   "ui": {
+    "x": 3000,
+    "y": 300
+   }
+  },
+  {
+   "id": "down",
+   "type": "scale_to_model",
+   "params": {
+    "scale": 2
+   },
+   "note": "LR at half the HR size.",
+   "ui": {
+    "x": 3300,
+    "y": 300
+   }
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "note": "5-frame sequences; HR from the chunk, LR from the damage chain.",
+   "ui": {
+    "x": 3600,
+    "y": 0
+   }
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "note": "Pick an output folder.",
+   "ui": {
+    "x": 3900,
+    "y": 0
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "sd.clip"
+  },
+  {
+   "from": "sd.clip",
+   "to": "fields.clip"
+  },
+  {
+   "from": "fields.clip",
+   "to": "bleed.clip"
+  },
+  {
+   "from": "bleed.clip",
+   "to": "peaking.clip"
+  },
+  {
+   "from": "peaking.clip",
+   "to": "echo.clip"
+  },
+  {
+   "from": "echo.clip",
+   "to": "noise.clip"
+  },
+  {
+   "from": "noise.clip",
+   "to": "comp.clip"
+  },
+  {
+   "from": "comp.clip",
+   "to": "fix.clip"
+  },
+  {
+   "from": "fix.clip",
+   "to": "chroma.clip"
+  },
+  {
+   "from": "chroma.clip",
+   "to": "down.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.hr"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "down.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

@@ -1,0 +1,348 @@
+{
+ "version": 1,
+ "seed": 10,
+ "name": "10. Mixed sources: web, DVD and tape",
+ "description": "Each chunk gets one whole chain: web (soft scaling, grain, H.264), DVD (sharpened, MPEG-2) or tape (colour bleed, ghosts, grain, MPEG-2). A single chain with per-node chances would mix them into hybrids no real video has. The pick is in the manifest.",
+ "summary": "One coherent damage chain per chunk",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "ui": {
+    "x": 0,
+    "y": 0
+   },
+   "note": "Choose your high-quality video."
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "ui": {
+    "x": 300,
+    "y": 0
+   },
+   "note": "One chunk per scene."
+  },
+  {
+   "id": "web_down",
+   "type": "resample",
+   "params": {
+    "size": "scale",
+    "scale": 0.5
+   },
+   "ui": {
+    "x": 600,
+    "y": 300
+   },
+   "note": "Web: soft scaling."
+  },
+  {
+   "id": "web_grain",
+   "type": "sensor_noise",
+   "params": {
+    "probability": 0.5
+   },
+   "ui": {
+    "x": 900,
+    "y": 300
+   },
+   "note": "Web: camera noise, half the chunks."
+  },
+  {
+   "id": "web_comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264"
+   },
+   "ui": {
+    "x": 1200,
+    "y": 300
+   },
+   "note": "Web: H.264."
+  },
+  {
+   "id": "dvd_down",
+   "type": "resample",
+   "params": {
+    "size": "scale",
+    "scale": 0.5
+   },
+   "ui": {
+    "x": 600,
+    "y": 600
+   },
+   "note": "DVD: mastering downscale."
+  },
+  {
+   "id": "dvd_sharp",
+   "type": "sharpen",
+   "params": {},
+   "ui": {
+    "x": 900,
+    "y": 600
+   },
+   "note": "DVD: edge sharpening."
+  },
+  {
+   "id": "dvd_mix",
+   "type": "blend",
+   "params": {
+    "weight": {
+     "uniform": [
+      0.3,
+      1.0
+     ]
+    }
+   },
+   "ui": {
+    "x": 1200,
+    "y": 600
+   },
+   "note": "DVD: sharpening mixed in partly."
+  },
+  {
+   "id": "dvd_comp",
+   "type": "codec",
+   "params": {
+    "profile": "dvd_mpeg2"
+   },
+   "ui": {
+    "x": 1500,
+    "y": 600
+   },
+   "note": "DVD: MPEG-2."
+  },
+  {
+   "id": "tape_down",
+   "type": "resample",
+   "params": {
+    "size": "scale",
+    "scale": 0.5,
+    "softness": {
+     "uniform": [
+      1.2,
+      1.6
+     ]
+    }
+   },
+   "ui": {
+    "x": 600,
+    "y": 900
+   },
+   "note": "Tape: soft downscale."
+  },
+  {
+   "id": "tape_colour",
+   "type": "chroma_bleed",
+   "params": {
+    "blur": {
+     "uniform": [
+      1.5,
+      3.0
+     ]
+    },
+    "shift": {
+     "uniform": [
+      -3.0,
+      3.0
+     ]
+    }
+   },
+   "ui": {
+    "x": 900,
+    "y": 900
+   },
+   "note": "Tape: colour bleeds and lags."
+  },
+  {
+   "id": "tape_ghost",
+   "type": "ghost_echo",
+   "params": {
+    "probability": 0.5
+   },
+   "ui": {
+    "x": 1200,
+    "y": 900
+   },
+   "note": "Tape: faint ghost, half the chunks."
+  },
+  {
+   "id": "tape_grain",
+   "type": "sensor_noise",
+   "params": {
+    "strength": {
+     "uniform": [
+      1.5,
+      4.0
+     ]
+    },
+    "size": {
+     "uniform": [
+      1.2,
+      2.0
+     ]
+    }
+   },
+   "ui": {
+    "x": 1500,
+    "y": 900
+   },
+   "note": "Tape: noise."
+  },
+  {
+   "id": "tape_comp",
+   "type": "codec",
+   "params": {
+    "profile": "dvd_mpeg2",
+    "quality": {
+     "uniform": [
+      0.0,
+      0.5
+     ]
+    }
+   },
+   "ui": {
+    "x": 1800,
+    "y": 900
+   },
+   "note": "Tape: low-bitrate MPEG-2."
+  },
+  {
+   "id": "pick",
+   "type": "random_branch",
+   "params": {
+    "weights": [
+     0.45,
+     0.4,
+     0.15,
+     0.0
+    ]
+   },
+   "ui": {
+    "x": 2100,
+    "y": 300
+   },
+   "note": "45% web, 40% DVD, 15% tape."
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "ui": {
+    "x": 2400,
+    "y": 0
+   },
+   "note": "HR from the chunk, LR from the picked chain."
+  },
+  {
+   "id": "blank",
+   "type": "reject_blank",
+   "params": {},
+   "ui": {
+    "x": 2700,
+    "y": 0
+   },
+   "note": "Drops fades and black frames."
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "ui": {
+    "x": 3000,
+    "y": 0
+   },
+   "note": "Pick an output folder."
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "web_down.clip"
+  },
+  {
+   "from": "web_down.clip",
+   "to": "web_grain.clip"
+  },
+  {
+   "from": "web_grain.clip",
+   "to": "web_comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "dvd_down.clip"
+  },
+  {
+   "from": "dvd_down.clip",
+   "to": "dvd_sharp.clip"
+  },
+  {
+   "from": "dvd_down.clip",
+   "to": "dvd_mix.a"
+  },
+  {
+   "from": "dvd_sharp.clip",
+   "to": "dvd_mix.b"
+  },
+  {
+   "from": "dvd_mix.clip",
+   "to": "dvd_comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "tape_down.clip"
+  },
+  {
+   "from": "tape_down.clip",
+   "to": "tape_colour.clip"
+  },
+  {
+   "from": "tape_colour.clip",
+   "to": "tape_ghost.clip"
+  },
+  {
+   "from": "tape_ghost.clip",
+   "to": "tape_grain.clip"
+  },
+  {
+   "from": "tape_grain.clip",
+   "to": "tape_comp.clip"
+  },
+  {
+   "from": "web_comp.clip",
+   "to": "pick.in_1"
+  },
+  {
+   "from": "dvd_comp.clip",
+   "to": "pick.in_2"
+  },
+  {
+   "from": "tape_comp.clip",
+   "to": "pick.in_3"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "pick.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "blank.sequences"
+  },
+  {
+   "from": "blank.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

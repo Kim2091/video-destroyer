@@ -1,0 +1,223 @@
+{
+ "version": 1,
+ "seed": 13,
+ "name": "13. Clean HR, damaged LR",
+ "description": "HR is cleaned (denoise off until you set a model, dehalo, darker lines) while LR is made from the raw source, so it keeps the source's own grain and halos for the model to learn to remove. Some chunks instead build LR from the clean HR plus fresh grain.",
+ "summary": "HR cleaned, LR keeps the source's flaws",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "ui": {
+    "x": 0,
+    "y": 0
+   },
+   "note": "Choose your high-quality video."
+  },
+  {
+   "id": "denoise",
+   "type": "denoise_hr",
+   "params": {
+    "model": ""
+   },
+   "enabled": false,
+   "ui": {
+    "x": 300,
+    "y": 0
+   },
+   "note": "Off: needs a denoise model."
+  },
+  {
+   "id": "dehalo",
+   "type": "fine_dehalo",
+   "params": {},
+   "ui": {
+    "x": 600,
+    "y": 0
+   },
+   "note": "Removes halos from HR."
+  },
+  {
+   "id": "darken",
+   "type": "fast_line_darken",
+   "params": {},
+   "ui": {
+    "x": 900,
+    "y": 0
+   },
+   "note": "Stronger lines in HR."
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "ui": {
+    "x": 1200,
+    "y": 0
+   },
+   "note": "Cuts clean HR and the raw source at the same frames."
+  },
+  {
+   "id": "raw_down",
+   "type": "resample",
+   "params": {
+    "size": "scale",
+    "scale": 0.5
+   },
+   "ui": {
+    "x": 1500,
+    "y": 300
+   },
+   "note": "LR from the raw source."
+  },
+  {
+   "id": "raw_comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264"
+   },
+   "ui": {
+    "x": 1800,
+    "y": 300
+   },
+   "note": "Compressed."
+  },
+  {
+   "id": "clean_down",
+   "type": "resample",
+   "params": {
+    "size": "scale",
+    "scale": 0.5
+   },
+   "ui": {
+    "x": 1500,
+    "y": 600
+   },
+   "note": "LR from the clean HR."
+  },
+  {
+   "id": "clean_grain",
+   "type": "film_grain",
+   "params": {},
+   "ui": {
+    "x": 1800,
+    "y": 600
+   },
+   "note": "Fresh grain."
+  },
+  {
+   "id": "clean_comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264"
+   },
+   "ui": {
+    "x": 2100,
+    "y": 600
+   },
+   "note": "Compressed."
+  },
+  {
+   "id": "pick",
+   "type": "random_branch",
+   "params": {
+    "weights": [
+     0.6,
+     0.4,
+     0.0,
+     0.0
+    ]
+   },
+   "ui": {
+    "x": 2400,
+    "y": 300
+   },
+   "note": "60% raw, 40% clean + grain."
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "ui": {
+    "x": 2700,
+    "y": 0
+   },
+   "note": "HR from the clean chunk."
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "ui": {
+    "x": 3000,
+    "y": 0
+   },
+   "note": "Pick an output folder."
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "denoise.clip"
+  },
+  {
+   "from": "denoise.clip",
+   "to": "dehalo.clip"
+  },
+  {
+   "from": "dehalo.clip",
+   "to": "darken.clip"
+  },
+  {
+   "from": "darken.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "src.clip",
+   "to": "chunks.aux"
+  },
+  {
+   "from": "chunks.aux",
+   "to": "raw_down.clip"
+  },
+  {
+   "from": "raw_down.clip",
+   "to": "raw_comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "clean_down.clip"
+  },
+  {
+   "from": "clean_down.clip",
+   "to": "clean_grain.clip"
+  },
+  {
+   "from": "clean_grain.clip",
+   "to": "clean_comp.clip"
+  },
+  {
+   "from": "raw_comp.clip",
+   "to": "pick.in_1"
+  },
+  {
+   "from": "clean_comp.clip",
+   "to": "pick.in_2"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "pick.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

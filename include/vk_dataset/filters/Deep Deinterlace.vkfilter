@@ -1,0 +1,15 @@
+name = "Deep Deinterlace"
+code = """
+# Full Docs: https://github.com/pifroggi/vs_deepdeinterlace?tab=readme-ov-file#usage
+tff = True             # True is top field first, false is bottom field first.
+deinterlacer = [1, 1]  # The first value is the deinterlacer for luma and the second for chroma. Available deinterlacers are 1 (DDD), 2 (DeF)).
+
+
+import vs_deepdeinterlace
+use_cuda = VK_BACKEND == "tensorrt"
+clip = vs_deepdeinterlace.YUV(clip, tff=tff, deinterlacer=deinterlacer, device="cuda" if use_cuda else "cpu", fp16=use_cuda)"""
+category = [ "Deinterlacing" ]
+description = "Three AI deinterlacers. Uses CUDA with TensorRT or CPU with NCNN/DirectML; input must be interlaced and output frame rate is doubled."
+
+[metadata]
+createdAt = "2026-08-15T01:30:11.222Z"

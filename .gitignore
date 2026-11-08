@@ -1,0 +1,23 @@
+/node_modules
+/data
+# NOTE: do not ignore /build - it is electron-builder's buildResources dir
+# (icons, installer.nsh), which is source, not output. Output goes to
+# /dist and /release. Ignoring it meant build/installer.nsh would never
+# reach CI, and the icons only survived because they were force-added.
+/dist
+/.vite
+/release
+/.desktop.ini
+/main.log
+/*.png
+/include/plugins/plugins
+
+# Native plugin build output
+native/*/build/
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# The analogue tape plugin, built by npm run build:native
+include/vk_dataset/plugins/

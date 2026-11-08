@@ -1,0 +1,19 @@
+Video Destroyer
+Copyright 2026 Kim2091 (Sparkles)
+
+Video Destroyer is designed and developed by Kim2091 (Sparkles). It is built
+on Vapourkit, also by Kim2091, and includes code from VSR-Dataset-Creator by
+Bendel (Apache License 2.0, used with permission). The analogue video nodes
+use ntsc-simulator by Kim2091 and Joey Ballentine (Apache License 2.0).
+
+Website: https://www.kim2091.art/
+GitHub:  https://github.com/Kim2091
+Ko-fi:   https://ko-fi.com/kim20913944
+
+Video Destroyer is licensed under the GNU General Public License, version 3.
+As an additional term under section 7(b) of that licence, copies and modified
+versions must keep this NOTICE file, and the author attribution and links
+above, intact.
+
+Third-party notices: NOTICE.md in include/vk_dataset (THIRD_PARTY_NOTICES.md
+in a release) and PLUGINS.md.

@@ -1,0 +1,105 @@
+{
+ "version": 1,
+ "seed": 1,
+ "name": "1. First dataset: downscale + compress",
+ "description": "The smallest useful job. One video becomes HR/LR pairs: HR is the original, LR is the same frames scaled to half size and web-compressed. Set a video on Load Video and a folder on Save Dataset, then Run.",
+ "summary": "Video to half-size, compressed pairs",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "note": "Choose your high-quality video (or a folder of videos).",
+   "ui": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "note": "One chunk per scene, each with its own random settings.",
+   "ui": {
+    "x": 300,
+    "y": 0
+   }
+  },
+  {
+   "id": "down",
+   "type": "scale_to_model",
+   "params": {
+    "scale": 2
+   },
+   "note": "LR path: half size, for a 2x model.",
+   "ui": {
+    "x": 600,
+    "y": 300
+   }
+  },
+  {
+   "id": "comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264"
+   },
+   "note": "LR path: web-style H.264.",
+   "ui": {
+    "x": 900,
+    "y": 300
+   }
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "note": "5-frame sequences; HR from the chunk, LR from the damage chain.",
+   "ui": {
+    "x": 1200,
+    "y": 0
+   }
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "note": "Pick an output folder.",
+   "ui": {
+    "x": 1500,
+    "y": 0
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.hr"
+  },
+  {
+   "from": "down.clip",
+   "to": "comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "comp.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

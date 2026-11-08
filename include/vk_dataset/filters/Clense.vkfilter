@@ -1,0 +1,13 @@
+name = "Clense"
+category = "Temporal Smoothing"
+code = """
+# Temporal cleaning to remove outlier pixels
+# The rgvs plugin is gone; vsrgtools.clense() wraps the zsmooth replacement.
+
+from vsrgtools import clense
+
+clip = clense(clip)"""
+description = "Removes temporal outliers (pixels that differ significantly from adjacent frames)"
+
+[metadata]
+createdAt = "2026-01-31T00:00:00.000Z"

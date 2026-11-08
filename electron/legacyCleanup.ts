@@ -1,0 +1,253 @@
+// electron/legacyCleanup.ts
+import * as path from 'path';
+import * as fs from 'fs-extra';
+import { logger } from './logger';
+import { IS_WINDOWS, PATHS } from './constants';
+import type { GpuVendor } from './gpuDetection';
+
+/**
+ * Plugin DLLs that Vapourkit's larger plugins.7z put in the autoload folder and
+ * that PyPI wheels now provide under a DIFFERENT filename (e.g. bundled
+ * libmvtools.dll vs pip mvtools.dll, or a per-plugin subfolder). An install
+ * that still has them would autoload both copies, and the alphabetically-first
+ * one wins, so the stale bundled copy must be removed.
+ *
+ * IMPORTANT: never list a name a pip wheel installs at the same path
+ * (case-insensitively) — that would delete the pip-managed file on reinstall
+ * runs. Same-named files (fmtconv.dll, cas.dll, wnnm.dll, ...) self-heal
+ * instead: the bundle is extracted with skip-existing semantics and pip
+ * overwrites bundled copies when it installs, so the pip version always wins.
+ */
+export const SUPERSEDED_PLUGIN_FILES: string[] = [
+  // vs-mlrt (pip installs into ort/, ort-cuda/, trt/ subfolders)
+  'vsort.dll',
+  'vsort',
+  'vstrt.dll',
+  'vsmlrt-cuda',
+  // BestSource (pip: libbestsource.dll)
+  'bestsource.dll',
+  // pip wheels using per-plugin subfolders
+  'akarin.dll',
+  'vszip.dll',
+  'zsmooth.dll',
+  'manipmv.dll',
+  'hysteresis.dll',
+  'dfttest2_cuda.dll',
+  'bm3dcuda_rtc.dll',
+  'BilateralGPU_RTC.dll',
+  'adaptivegrain_rs.dll',
+  // pip wheels using a different root filename
+  'libfillborders.dll',
+  'vsznedi3.dll',
+  'libsangnom.dll',
+  'libawarpsharp2.dll',
+  'libresize2.dll',
+  'EEDI3m.dll',
+  'libmvtools.dll',
+  'libscxvid.dll',
+];
+
+// Defined beside the script sources, which must never install these either.
+export { SUPERSEDED_SCRIPT_MODULES } from './scriptSources';
+import { SUPERSEDED_SCRIPT_MODULES } from './scriptSources';
+
+/**
+ * Files and folders from the old VapourSynth R72 portable zip that used to live
+ * at the root of the vapoursynth-portable folder. The runtime now comes from the
+ * VapourSynth wheel in site-packages, so these must go — a stale vapoursynth.dll
+ * or VSScript.dll on PATH could otherwise be picked up over the pip-managed one.
+ */
+const LEGACY_PORTABLE_ENTRIES: string[] = [
+  'VSPipe.exe',
+  'vspipe.exe',
+  'VapourSynth.dll',
+  'vapoursynth.dll',
+  'VSScript.dll',
+  'vsscript.dll',
+  'VSVFW.dll',
+  'vsvfw.dll',
+  'VSScriptPython38.dll',
+  'portable.vs',
+  'wheel',
+  'sdk',
+  'doc',
+  'vapoursynth64',
+  'vs-plugins',
+  '7z.exe',
+  '7z.dll',
+  'VapourSynth.chm',
+  'vsrepo.py',
+];
+
+async function removeEntries(baseDir: string, entries: string[], label: string): Promise<void> {
+  if (!await fs.pathExists(baseDir)) {
+    return;
+  }
+
+  let removedCount = 0;
+  for (const entry of entries) {
+    const target = path.join(baseDir, entry);
+    if (await fs.pathExists(target)) {
+      try {
+        await fs.remove(target);
+        removedCount++;
+        logger.info(`Removed superseded ${label}: ${entry}`);
+      } catch (error) {
+        logger.warn(`Failed to remove superseded ${label} ${entry}:`, error);
+      }
+    }
+  }
+
+  if (removedCount > 0) {
+    logger.info(`Removed ${removedCount} superseded ${label} entr${removedCount === 1 ? 'y' : 'ies'} from ${baseDir}`);
+  }
+}
+
+/**
+ * Removes old plugin DLLs that PyPI wheels now provide. Runs against the
+ * autoload plugins directory after the bundled plugins.7z is extracted, so only
+ * plugins without a PyPI counterpart (TCanny, MiscFilters, ...) remain.
+ */
+export async function removeSupersededPlugins(pluginsDir: string = PATHS.PLUGINS): Promise<void> {
+  await removeEntries(pluginsDir, SUPERSEDED_PLUGIN_FILES, 'plugin');
+}
+
+/**
+ * Removes old script modules that PyPI packages now provide, plus stale bytecode.
+ */
+export async function removeSupersededScripts(scriptsDir: string = PATHS.SCRIPTS): Promise<void> {
+  await removeEntries(scriptsDir, SUPERSEDED_SCRIPT_MODULES, 'script module');
+  // Stale bytecode from removed modules; regenerated on demand for the rest.
+  await removeEntries(scriptsDir, ['__pycache__'], 'script cache');
+}
+
+/**
+ * Bundled plugin builds that crash the pip-installed VapourSynth (R79) outright.
+ * API3 plugins generally still load through VapourSynth's compat bridge with a
+ * deprecation warning, but these specific builds contain their own "v3 bridge"
+ * guard that calls abort() when the core can't hand out an API3 VSAPI
+ * ("v3bdg: unable to acquire api3 VSAPI, abort"), killing vspipe entirely.
+ */
+const CRASHING_PLUGIN_FILES: string[] = [
+  'fft3dfilter.dll',
+];
+
+/**
+ * Plugin folders that vendor their own ROCm stack, removed on Linux.
+ *
+ * bm3dhip and dfttest2's hip and hiprtc builds each bundle amdhip64,
+ * amd_comgr, libclang-cpp and libLLVM under auditwheel-hashed names, so the
+ * loader keeps every copy. ELF symbol interposition then has a second
+ * libclang-cpp register its analyses into the first one's registry, and LLVM
+ * aborts the whole process: "LLVM ERROR: support is already registered for
+ * analysis: AnalysisName(PointerFlowAnalysisResult)". bm3dhip collides with
+ * dfttest2's copy, and dfttest2's collides with the system ROCm that the
+ * MIGraphX backend loads, so no bundled stack can stay. Windows DLLs do not
+ * interpose, which is why this only shows on Linux.
+ *
+ * vsjetpack's [amd] extra installs all three. Nothing is lost that has no
+ * fallback: no shipped filter uses BM3D, BM3D through vsjetpack has bm3dcpu,
+ * and dfttest2 falls back to dfttest2_cpu. dfttest2_hip did not even load on
+ * the machine that reported this (its bundled librocfft is not page-aligned).
+ */
+const LINUX_BUNDLED_ROCM_PLUGINS: string[] = ['bm3dhip', 'dfttest2_hip', 'dfttest2_hiprtc'];
+
+/**
+ * Post-install plugin compatibility fixes:
+ *
+ * 1. Removes bundled plugin builds known to abort VapourSynth at autoload,
+ *    and on Linux the HIP plugins whose bundled ROCm stacks collide.
+ * 2. Resolves the vs-mlrt ONNX Runtime duplicate for the machine's GPU vendor.
+ *    Both vapoursynth-mlrt-ort (CPU/DirectML) and vapoursynth-mlrt-ort-cuda
+ *    ship a vsort.dll, and autoload walks alphabetically, so whichever folder
+ *    sorts first wins and the other is skipped as a duplicate:
+ *      - nvidia: keep ort-cuda (a strict superset — it bundles DirectML too)
+ *        and drop the plain "ort" folder that would otherwise win the race.
+ *      - everything else: drop an orphaned ort-cuda folder left over from a
+ *        previous CUDA-flavored install so the plain "ort" build — the only
+ *        DirectML build actually installed on these vendors — survives.
+ *    pip reinstalls restore the folders, which is fine: this runs after every
+ *    install.
+ *
+ * Callers MUST pass the real vendor. The 'nvidia' default only exists so
+ * pre-existing behavior is preserved for configs that predate vendor tracking;
+ * calling it without a vendor on an AMD machine would delete the ort folder
+ * that machine needs.
+ */
+export async function applyPluginCompatibilityFixes(
+  vendor: GpuVendor = 'nvidia',
+  pluginsDir: string = PATHS.PLUGINS,
+  platform: NodeJS.Platform = process.platform,
+): Promise<void> {
+  await removeEntries(pluginsDir, CRASHING_PLUGIN_FILES, 'crashing plugin');
+
+  if (platform === 'linux') {
+    for (const name of LINUX_BUNDLED_ROCM_PLUGINS) {
+      const dir = path.join(pluginsDir, name);
+      if (!await fs.pathExists(dir)) continue;
+      try {
+        await fs.remove(dir);
+        logger.info(`Removed the ${name} plugin folder: its bundled ROCm stack aborts VapourSynth ` +
+          'alongside another ROCm on Linux');
+      } catch (error) {
+        logger.warn(`Failed to remove the ${name} plugin folder:`, error);
+      }
+    }
+  }
+
+  const ortCudaPlugin = path.join(pluginsDir, 'ort-cuda', IS_WINDOWS ? 'vsort.dll' : 'libvsort.so');
+  const ortCudaDir = path.join(pluginsDir, 'ort-cuda');
+  const ortDir = path.join(pluginsDir, 'ort');
+
+  if (vendor === 'nvidia') {
+    if (await fs.pathExists(ortCudaPlugin) && await fs.pathExists(ortDir)) {
+      try {
+        await fs.remove(ortDir);
+        logger.info('Removed duplicate CPU-only ort plugin folder (ort-cuda build takes precedence)');
+      } catch (error) {
+        logger.warn('Failed to remove duplicate ort plugin folder:', error);
+      }
+    }
+    return;
+  }
+
+  if (await fs.pathExists(ortCudaDir)) {
+    try {
+      await fs.remove(ortCudaDir);
+      logger.info(`Removed leftover CUDA ort plugin folder (GPU vendor: ${vendor}; the DirectML "ort" build takes precedence)`);
+    } catch (error) {
+      logger.warn('Failed to remove leftover ort-cuda plugin folder:', error);
+    }
+  }
+}
+
+/**
+ * Migrates an install from the old zip-based layout (VapourSynth R72 portable +
+ * vs-plugins DLL folder) to the pip-based layout. Detects the old layout by the
+ * portable zip's root-level artifacts and removes them; the plugin install phase
+ * re-provides everything from PyPI and the bundled archives.
+ */
+export async function migrateLegacyPortableLayout(): Promise<void> {
+  const legacyMarkers = [
+    path.join(PATHS.VS, 'portable.vs'),
+    path.join(PATHS.VS, 'VSPipe.exe'),
+    path.join(PATHS.VS, 'vs-plugins'),
+  ];
+
+  let isLegacy = false;
+  for (const marker of legacyMarkers) {
+    if (await fs.pathExists(marker)) {
+      isLegacy = true;
+      break;
+    }
+  }
+
+  if (!isLegacy) {
+    return;
+  }
+
+  logger.info('Old zip-based VapourSynth layout detected — migrating to the pip-based layout');
+  await removeEntries(PATHS.VS, LEGACY_PORTABLE_ENTRIES, 'legacy portable file');
+  await removeSupersededScripts();
+  logger.info('Legacy portable layout migration complete');
+}

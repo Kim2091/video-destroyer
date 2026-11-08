@@ -1,0 +1,126 @@
+{
+ "version": 1,
+ "seed": 0,
+ "name": "9. Denoise dataset from still shots",
+ "description": "VSR-Dataset-Creator's Denoise Dataset: finds still shots, averages each into a clean HR frame and pairs it with the untouched noisy centre frame. For training a show-specific denoiser.",
+ "summary": "Clean HR frames from still shots",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {
+    "path": ""
+   },
+   "ui": {
+    "x": 0,
+    "y": 0
+   },
+   "note": "A grainy video with still shots."
+  },
+  {
+   "id": "find",
+   "type": "find_static_runs",
+   "params": {
+    "window": 9,
+    "max_pairs": 0,
+    "max_per_scene": 3,
+    "min_gap": 12
+   },
+   "ui": {
+    "x": 300,
+    "y": 0
+   },
+   "note": "Finds shots where nothing moves."
+  },
+  {
+   "id": "centers",
+   "type": "static_centers",
+   "ui": {
+    "x": 600,
+    "y": 300
+   },
+   "note": "The noisy middle frame of each shot: the LR image."
+  },
+  {
+   "id": "denoise",
+   "type": "denoise_hr",
+   "params": {
+    "model": "",
+    "tile_width": 512,
+    "tile_height": 512,
+    "overlap": 32
+   },
+   "ui": {
+    "x": 900,
+    "y": 300
+   },
+   "note": "Makes the reference the frames are aligned to."
+  },
+  {
+   "id": "stack",
+   "type": "static_stack",
+   "params": {
+    "sigma_clip": 2.5
+   },
+   "ui": {
+    "x": 1200,
+    "y": 0
+   },
+   "note": "Averages each shot into a clean HR frame."
+  },
+  {
+   "id": "out",
+   "type": "write_static_dataset",
+   "params": {
+    "directory": ""
+   },
+   "ui": {
+    "x": 1500,
+    "y": 0
+   },
+   "note": "Pick an output folder."
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "find.clip"
+  },
+  {
+   "from": "src.clip",
+   "to": "centers.clip"
+  },
+  {
+   "from": "find.runs",
+   "to": "centers.runs"
+  },
+  {
+   "from": "centers.clip",
+   "to": "denoise.clip"
+  },
+  {
+   "from": "src.clip",
+   "to": "stack.clip"
+  },
+  {
+   "from": "find.runs",
+   "to": "stack.runs"
+  },
+  {
+   "from": "denoise.clip",
+   "to": "stack.reference"
+  },
+  {
+   "from": "stack.clip",
+   "to": "out.hr"
+  },
+  {
+   "from": "centers.clip",
+   "to": "out.lr"
+  },
+  {
+   "from": "find.runs",
+   "to": "out.runs"
+  }
+ ]
+}

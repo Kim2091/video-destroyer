@@ -1,0 +1,38 @@
+name = "sRestore"
+category = ["Hybrid", "Frame Rate"]
+code = """
+# Restore original framerate from telecined/decimated content
+# From hybrid_filters/srestore.py
+
+# The frame rate to restore. None restores 25 fps from a 59.94 or 29.97 clip:
+# right for a PAL show converted to NTSC, wrong for NTSC film, which is 24000/1001.
+frate = 24000/1001
+import sys
+sys.path.insert(0, r'hybrid_filters')
+
+# This bundled script still imports the old, deprecated `vsutil` package
+# (superseded by vstools, which does not ship it). Shim it from vstools so
+# the script can load without a separate PyPI dependency.
+import types as _pytypes
+if 'vsutil' not in sys.modules:
+    import vstools as _vst
+    _u = _pytypes.ModuleType('vsutil')
+    for _n in ('depth', 'fallback', 'get_y', 'join', 'plane', 'scale_value', 'get_depth', 'get_w', 'split', 'iterate'):
+        setattr(_u, _n, getattr(_vst, _n))
+    _u.Dither = _vst.DitherType
+    _t = _pytypes.ModuleType('vsutil.types')
+    _t.Dither = _vst.DitherType
+    class _Range(int):
+        LIMITED, FULL = 0, 1
+    _t.Range = _Range
+    _t.resolve_enum = lambda enum, value, name, fn=None: None if value is None else enum(value)
+    _u.types = _t
+    sys.modules['vsutil'] = _u
+
+from srestore import sRestoreMUVs
+
+clip = sRestoreMUVs(clip, frate=frate, omode=6, mode=2, thresh=16)"""
+description = "Restores the original frame rate by dropping duplicate and blended frames, e.g. after a bob deinterlacer. Defaults to NTSC film (23.976); set frate = None for a PAL show converted to NTSC (25)."
+
+[metadata]
+createdAt = "2026-02-01T00:00:00.000Z"

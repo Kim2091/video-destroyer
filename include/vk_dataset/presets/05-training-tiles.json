@@ -1,0 +1,151 @@
+{
+ "version": 1,
+ "seed": 5,
+ "name": "5. Training tiles",
+ "description": "Like the first dataset, but every sequence is cut into 256 px HR tiles (128 px LR) and checked for missing frames, ready for training.",
+ "summary": "Pairs cut into training tiles",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "note": "Choose your high-quality video (or a folder of videos).",
+   "ui": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "note": "One chunk per scene, each with its own random settings.",
+   "ui": {
+    "x": 300,
+    "y": 0
+   }
+  },
+  {
+   "id": "down",
+   "type": "scale_to_model",
+   "params": {
+    "scale": 2
+   },
+   "note": "Half size.",
+   "ui": {
+    "x": 600,
+    "y": 300
+   }
+  },
+  {
+   "id": "comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264"
+   },
+   "note": "Compression artifacts.",
+   "ui": {
+    "x": 900,
+    "y": 300
+   }
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "note": "5-frame sequences; HR from the chunk, LR from the damage chain.",
+   "ui": {
+    "x": 1200,
+    "y": 0
+   }
+  },
+  {
+   "id": "tiles",
+   "type": "tile",
+   "params": {
+    "tile_width": 256,
+    "tile_height": 256,
+    "max_tiles": 4
+   },
+   "note": "256 px HR tiles; LR tiles follow the scale.",
+   "ui": {
+    "x": 1500,
+    "y": 0
+   }
+  },
+  {
+   "id": "blank",
+   "type": "reject_blank",
+   "params": {},
+   "note": "Drops fades and black frames.",
+   "ui": {
+    "x": 1800,
+    "y": 0
+   }
+  },
+  {
+   "id": "complete",
+   "type": "reject_incomplete",
+   "params": {},
+   "note": "Safety check.",
+   "ui": {
+    "x": 2100,
+    "y": 0
+   }
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "note": "Pick an output folder.",
+   "ui": {
+    "x": 2400,
+    "y": 0
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.hr"
+  },
+  {
+   "from": "down.clip",
+   "to": "comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "comp.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "tiles.sequences"
+  },
+  {
+   "from": "tiles.sequences",
+   "to": "blank.sequences"
+  },
+  {
+   "from": "blank.sequences",
+   "to": "complete.sequences"
+  },
+  {
+   "from": "complete.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

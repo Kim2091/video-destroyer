@@ -1,0 +1,55 @@
+name = "QTGMC (Old)"
+category = ["Hybrid", "Deinterlacing"]
+code = """
+# High-quality deinterlacing with motion compensation
+# From hybrid_filters/qtgmc.py
+import sys
+sys.path.insert(0, r'hybrid_filters')
+
+# This bundled script still imports the old, deprecated `vsutil` package
+# (superseded by vstools, which does not ship it). Shim it from vstools so
+# the script can load without a separate PyPI dependency.
+import types as _pytypes
+if 'vsutil' not in sys.modules:
+    import vstools as _vst
+    _u = _pytypes.ModuleType('vsutil')
+    for _n in ('depth', 'fallback', 'get_y', 'join', 'plane', 'scale_value', 'get_depth', 'get_w', 'split', 'iterate'):
+        setattr(_u, _n, getattr(_vst, _n))
+    _u.Dither = _vst.DitherType
+    _t = _pytypes.ModuleType('vsutil.types')
+    _t.Dither = _vst.DitherType
+    class _Range(int):
+        LIMITED, FULL = 0, 1
+    _t.Range = _Range
+    _t.resolve_enum = lambda enum, value, name, fn=None: None if value is None else enum(value)
+    _u.types = _t
+    sys.modules['vsutil'] = _u
+
+from qtgmc import QTGMC
+
+# qtgmc.py binds core.eedi3m.EEDI3 before it has decided whether the preset
+# even uses EEDI3, so a missing eedi3m breaks every preset, 'Slower' included.
+# And it is missing by design: EEDI3m.dll is superseded by the eedi3vk2 wheel
+# (Vulkan) and removed at install. The script's detection only knows the older
+# `eedi3vk` spelling, so answer to that name and translate the one argument the
+# two plugins spell differently.
+import qtgmc as _qtgmc
+if not hasattr(_qtgmc.core, 'eedi3vk') and hasattr(core, 'eedi3vk2'):
+    class _Eedi3vk:
+        @staticmethod
+        def EEDI3(clip, device=None, **kwargs):
+            if device is not None and device >= 0:
+                kwargs['device_index'] = device
+            return core.eedi3vk2.EEDI3(clip, **kwargs)
+
+    class _CoreWithEedi3vk:
+        def __getattr__(self, name):
+            return _Eedi3vk if name == 'eedi3vk' else getattr(core, name)
+
+    _qtgmc.core = _CoreWithEedi3vk()
+
+clip = QTGMC(clip, Preset='Slower', FPSDivisor=1, TFF=None)"""
+description = "High-quality motion-compensated deinterlacing (QTGMC)"
+
+[metadata]
+createdAt = "2026-02-01T00:00:00.000Z"

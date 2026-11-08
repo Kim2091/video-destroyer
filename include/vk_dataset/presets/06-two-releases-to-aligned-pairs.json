@@ -1,0 +1,252 @@
+{
+ "version": 1,
+ "seed": 0,
+ "name": "6. Two releases to aligned pairs",
+ "description": "VSR-Dataset-Creator's Extract Sequences: an HR release and an LR release of the same footage are synced and aligned, then the best crop of each scene is saved as 9 LR frames with the centre frame as the HR target.",
+ "summary": "An HR and an LR release, synced and aligned",
+ "nodes": [
+  {
+   "id": "hr_src",
+   "type": "load_video",
+   "label": "HR Video",
+   "params": {
+    "path": ""
+   },
+   "ui": {
+    "x": 0,
+    "y": 0
+   },
+   "note": "The high-quality release (e.g. Blu-ray)."
+  },
+  {
+   "id": "lr_src",
+   "type": "load_video",
+   "label": "LR Video",
+   "params": {
+    "path": ""
+   },
+   "ui": {
+    "x": 0,
+    "y": 300
+   },
+   "note": "The low-quality release of the same footage (e.g. DVD)."
+  },
+  {
+   "id": "hr_crop",
+   "type": "crop_rescale",
+   "label": "HR Crop and Rescale",
+   "params": {
+    "left": 0,
+    "right": 0,
+    "top": 0,
+    "bottom": 0,
+    "rescale": 1.0
+   },
+   "ui": {
+    "x": 300,
+    "y": 0
+   },
+   "note": "Trim black bars if the releases differ."
+  },
+  {
+   "id": "lr_crop",
+   "type": "crop_rescale",
+   "label": "LR Crop and Rescale",
+   "params": {
+    "left": 0,
+    "right": 0,
+    "top": 0,
+    "bottom": 0,
+    "rescale": 1.0
+   },
+   "ui": {
+    "x": 300,
+    "y": 300
+   },
+   "note": "Trim black bars if the releases differ."
+  },
+  {
+   "id": "time",
+   "type": "align_time",
+   "params": {
+    "radius": 3,
+    "precision": 1,
+    "backend": "auto"
+   },
+   "ui": {
+    "x": 600,
+    "y": 300
+   },
+   "note": "Finds the offset, speed change and cut differences."
+  },
+  {
+   "id": "space",
+   "type": "align_space",
+   "params": {
+    "scale": 2,
+    "precision": 3,
+    "wide_search": true,
+    "lq_input": true,
+    "backend": "auto"
+   },
+   "ui": {
+    "x": 900,
+    "y": 0
+   },
+   "note": "Scale = your model's scale."
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {
+    "strategy": "scene",
+    "threshold": 15.0,
+    "min_duration": 0.75,
+    "max_chunks": 2400
+   },
+   "ui": {
+    "x": 1200,
+    "y": 0
+   },
+   "note": "LR drives scene detection; the aligned HR is cut at the same frames."
+  },
+  {
+   "id": "seq",
+   "type": "pair_sequences",
+   "params": {
+    "length": 9,
+    "per_chunk": 1,
+    "margin": 4
+   },
+   "ui": {
+    "x": 1500,
+    "y": 0
+   },
+   "note": "Best run of each scene."
+  },
+  {
+   "id": "tiles",
+   "type": "tile",
+   "params": {
+    "pick": "detail",
+    "tile_width": 512,
+    "tile_height": 512,
+    "max_tiles": 5,
+    "min_detail": 0.0015,
+    "edge_margin": 8,
+    "motion_bias": 1.0
+   },
+   "ui": {
+    "x": 1800,
+    "y": 0
+   },
+   "note": "Best 5 crops: 2 plus 3 spares."
+  },
+  {
+   "id": "aligned",
+   "type": "reject_misaligned",
+   "params": {
+    "min_alignment_score": 0.7,
+    "min_crop_alignment_score": 0.82,
+    "max_drift": 0,
+    "drift_frames": 2,
+    "crops_per_run": 2
+   },
+   "ui": {
+    "x": 2100,
+    "y": 0
+   },
+   "note": "Drops bad syncs and warps; keeps 2."
+  },
+  {
+   "id": "dedup",
+   "type": "dedup_sequences",
+   "params": {
+    "weights": "models/convnextS_1kpretrained_official_style.pth",
+    "threshold": 1.5,
+    "backend": "auto"
+   },
+   "ui": {
+    "x": 2400,
+    "y": 0
+   },
+   "note": "Needs the ConvNeXt weights file."
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": "",
+    "folders": {
+     "hr": "hr",
+     "lr": "lr"
+    },
+    "format": "png",
+    "naming": "plain"
+   },
+   "ui": {
+    "x": 2700,
+    "y": 0
+   },
+   "note": "Pick an output folder."
+  }
+ ],
+ "edges": [
+  {
+   "from": "hr_src.clip",
+   "to": "hr_crop.clip"
+  },
+  {
+   "from": "lr_src.clip",
+   "to": "lr_crop.clip"
+  },
+  {
+   "from": "hr_crop.clip",
+   "to": "time.hr"
+  },
+  {
+   "from": "lr_crop.clip",
+   "to": "time.lr"
+  },
+  {
+   "from": "hr_crop.clip",
+   "to": "space.hr"
+  },
+  {
+   "from": "time.lr",
+   "to": "space.lr"
+  },
+  {
+   "from": "time.lr",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "space.hr",
+   "to": "chunks.aux"
+  },
+  {
+   "from": "chunks.aux",
+   "to": "seq.hr"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "tiles.sequences"
+  },
+  {
+   "from": "tiles.sequences",
+   "to": "aligned.sequences"
+  },
+  {
+   "from": "aligned.sequences",
+   "to": "dedup.sequences"
+  },
+  {
+   "from": "dedup.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

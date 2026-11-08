@@ -1,0 +1,361 @@
+{
+ "version": 1,
+ "seed": 3,
+ "name": "3. Every degradation",
+ "description": "Every degradation node in the order real damage happens: optics and noise, mastering, SD format, compression, playback, final scaling. Only scaling and compression are on; switch on the ones your footage has.",
+ "summary": "All damage nodes in order, most off",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "note": "Choose your high-quality video (or a folder of videos).",
+   "ui": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": "sdr",
+   "type": "tonemap",
+   "params": {},
+   "note": "Off: turn on if the source is HDR.",
+   "ui": {
+    "x": 300,
+    "y": 0
+   },
+   "enabled": false
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "note": "One chunk per scene, each with its own random settings.",
+   "ui": {
+    "x": 600,
+    "y": 0
+   }
+  },
+  {
+   "id": "lens",
+   "type": "optics_blur",
+   "params": {},
+   "note": "Off: lens softness.",
+   "ui": {
+    "x": 900,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "grain",
+   "type": "film_grain",
+   "params": {},
+   "note": "Off: film grain.",
+   "ui": {
+    "x": 1200,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "noise",
+   "type": "sensor_noise",
+   "params": {},
+   "note": "Off: camera noise.",
+   "ui": {
+    "x": 1500,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "sd",
+   "type": "resample",
+   "params": {},
+   "note": "Off: master down to a DVD frame.",
+   "ui": {
+    "x": 1800,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "sharp",
+   "type": "sharpen",
+   "params": {},
+   "note": "Off: mastering halos.",
+   "ui": {
+    "x": 2100,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "bleed",
+   "type": "chroma_bleed",
+   "params": {},
+   "note": "Off: colour bleed.",
+   "ui": {
+    "x": 2400,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "echo",
+   "type": "ghost_echo",
+   "params": {},
+   "note": "Off: analogue ghost.",
+   "ui": {
+    "x": 2700,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "fields",
+   "type": "telecine",
+   "params": {},
+   "note": "Off: 3:2 pulldown; switch on with its fix.",
+   "ui": {
+    "x": 3000,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "bands",
+   "type": "quantize",
+   "params": {},
+   "note": "Off: banding.",
+   "ui": {
+    "x": 3300,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "comp",
+   "type": "codec",
+   "params": {
+    "profile": "dvd_mpeg2"
+   },
+   "note": "DVD MPEG-2; try other profiles.",
+   "ui": {
+    "x": 3600,
+    "y": 300
+   }
+  },
+  {
+   "id": "fix",
+   "type": "telecine_fix",
+   "params": {},
+   "enabled": false,
+   "ui": {
+    "x": 3900,
+    "y": 300
+   },
+   "note": "Off: the player's bad telecine fix."
+  },
+  {
+   "id": "deblock",
+   "type": "player_deblock",
+   "params": {},
+   "enabled": false,
+   "ui": {
+    "x": 4200,
+    "y": 300
+   },
+   "note": "Off: player deblocking."
+  },
+  {
+   "id": "dnr",
+   "type": "player_dnr",
+   "params": {},
+   "enabled": false,
+   "ui": {
+    "x": 4500,
+    "y": 300
+   },
+   "note": "Off: player noise reduction."
+  },
+  {
+   "id": "chroma",
+   "type": "chroma_subsample",
+   "params": {},
+   "note": "Off: player colour upsampling.",
+   "ui": {
+    "x": 4800,
+    "y": 300
+   },
+   "enabled": false
+  },
+  {
+   "id": "down",
+   "type": "scale_to_model",
+   "params": {
+    "scale": 2
+   },
+   "note": "LR at half the HR size.",
+   "ui": {
+    "x": 5100,
+    "y": 300
+   }
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "note": "5-frame sequences; HR from the chunk, LR from the damage chain.",
+   "ui": {
+    "x": 5400,
+    "y": 0
+   }
+  },
+  {
+   "id": "tile",
+   "type": "tile",
+   "params": {
+    "tile_width": 512,
+    "tile_height": 512
+   },
+   "note": "Off: 512 px tiles.",
+   "ui": {
+    "x": 5700,
+    "y": 0
+   },
+   "enabled": false
+  },
+  {
+   "id": "blank",
+   "type": "reject_blank",
+   "params": {},
+   "note": "Drops fades and black frames.",
+   "ui": {
+    "x": 6000,
+    "y": 0
+   }
+  },
+  {
+   "id": "motion",
+   "type": "reject_motion",
+   "params": {},
+   "note": "Drops still or cut-crossing sequences.",
+   "ui": {
+    "x": 6300,
+    "y": 0
+   }
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "note": "Pick an output folder.",
+   "ui": {
+    "x": 6600,
+    "y": 0
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "sdr.clip"
+  },
+  {
+   "from": "sdr.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "lens.clip"
+  },
+  {
+   "from": "lens.clip",
+   "to": "grain.clip"
+  },
+  {
+   "from": "grain.clip",
+   "to": "noise.clip"
+  },
+  {
+   "from": "noise.clip",
+   "to": "sd.clip"
+  },
+  {
+   "from": "sd.clip",
+   "to": "sharp.clip"
+  },
+  {
+   "from": "sharp.clip",
+   "to": "bleed.clip"
+  },
+  {
+   "from": "bleed.clip",
+   "to": "echo.clip"
+  },
+  {
+   "from": "echo.clip",
+   "to": "fields.clip"
+  },
+  {
+   "from": "fields.clip",
+   "to": "bands.clip"
+  },
+  {
+   "from": "bands.clip",
+   "to": "comp.clip"
+  },
+  {
+   "from": "comp.clip",
+   "to": "fix.clip"
+  },
+  {
+   "from": "fix.clip",
+   "to": "deblock.clip"
+  },
+  {
+   "from": "deblock.clip",
+   "to": "dnr.clip"
+  },
+  {
+   "from": "dnr.clip",
+   "to": "chroma.clip"
+  },
+  {
+   "from": "chroma.clip",
+   "to": "down.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.hr"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "down.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "tile.sequences"
+  },
+  {
+   "from": "tile.sequences",
+   "to": "blank.sequences"
+  },
+  {
+   "from": "blank.sequences",
+   "to": "motion.sequences"
+  },
+  {
+   "from": "motion.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

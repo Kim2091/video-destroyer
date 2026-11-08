@@ -1,0 +1,167 @@
+{
+    "name": "video-destroyer",
+    "version": "2.0.0",
+    "description": "Builds AI training datasets from video with a node graph, on VapourSynth",
+    "updateRepository": "Kim2091/video-destroyer",
+    "main": "dist/electron/main.js",
+    "scripts": {
+        "dev": "npm run build:electron && concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
+        "dev:vite": "vite",
+        "dev:electron": "wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .",
+        "build:electron": "tsc -p tsconfig.electron.json",
+        "build": "tsc && vite build && npm run build:electron",
+        "build:native": "tsx scripts/buildNative.ts",
+        "build:all": "npm run build:native && npm run build && electron-builder --win --x64",
+        "build:both": "npm run build:native && npm run build && electron-builder --win nsis 7z --x64 && tsx scripts/renamePortable.ts",
+        "build:setup": "npm run build:native && npm run build && electron-builder --win nsis --x64",
+        "build:7z": "npm run build:native && npm run build && electron-builder --win 7z --x64 && tsx scripts/renamePortable.ts",
+        "build:linux": "npm run build:native && npm run build && electron-builder --linux AppImage --x64 --publish never",
+        "preview": "vite preview",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "test:electron": "vitest run -c vitest.config.electron.ts"
+    },
+    "keywords": [
+        "video",
+        "dataset",
+        "super-resolution",
+        "VapourSynth",
+        "AI",
+        "training"
+    ],
+    "author": "Kim2091",
+    "license": "GPL 3.0",
+    "desktopName": "video-destroyer",
+    "devDependencies": {
+        "@types/fs-extra": "^11.0.4",
+        "@types/node": "^22.5.0",
+        "@types/react": "^18.3.5",
+        "@types/react-dom": "^18.3.0",
+        "@vitejs/plugin-react": "^4.3.1",
+        "autoprefixer": "^10.4.20",
+        "concurrently": "^9.0.1",
+        "cross-env": "^10.1.0",
+        "electron": "^32.0.1",
+        "electron-builder": "^26.0.12",
+        "postcss": "^8.4.45",
+        "tailwindcss": "^3.4.10",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3",
+        "vite": "^5.4.3",
+        "vitest": "^4.1.0",
+        "wait-on": "^8.0.1"
+    },
+    "dependencies": {
+        "@xyflow/react": "^12.12.0",
+        "7zip-min": "^2.1.0",
+        "axios": "^1.12.2",
+        "electron-log": "^5.2.2",
+        "fs-extra": "^11.3.2",
+        "lucide-react": "^0.441.0",
+        "react": "^18.3.1",
+        "react-dom": "^18.3.1",
+        "zod": "^4.3.6"
+    },
+    "build": {
+        "appId": "com.kim2091.videodestroyer",
+        "productName": "Video Destroyer",
+        "directories": {
+            "output": "release"
+        },
+        "extraFiles": [
+            {
+                "from": "LICENSE",
+                "to": "LICENSE.txt"
+            },
+            {
+                "from": "include/vk_dataset/NOTICE.md",
+                "to": "THIRD_PARTY_NOTICES.md"
+            },
+            {
+                "from": "NOTICE",
+                "to": "NOTICE.txt"
+            },
+            {
+                "from": "PLUGINS.md",
+                "to": "PLUGINS.md"
+            }
+        ],
+        "files": [
+            "dist/**/*",
+            "include/plugins/**/*.7z",
+            "include/build_trt_engine.py",
+            "include/align_videos.py",
+            "include/vk_runtime.py",
+            "include/vsmlrt.py",
+            "include/vk_dataset/**/*.py",
+            "include/vk_dataset/presets/*.json",
+            "include/vk_dataset/plugins/*",
+            "include/vk_dataset/filters/*.vkfilter",
+            "package.json",
+            "!data/**/*"
+        ],
+        "asarUnpack": [
+            "include/plugins/**/*.7z",
+            "include/build_trt_engine.py",
+            "include/align_videos.py",
+            "include/vk_runtime.py",
+            "include/vsmlrt.py",
+            "include/vk_dataset/**/*.py",
+            "include/vk_dataset/presets/*.json",
+            "include/vk_dataset/plugins/*",
+            "include/vk_dataset/filters/*.vkfilter",
+            "node_modules/7zip-bin/**/*"
+        ],
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                },
+                {
+                    "target": "7z",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "icon": "build/icon.ico",
+            "artifactName": "VideoDestroyer-${version}-${name}.${ext}"
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowElevation": false,
+            "allowToChangeInstallationDirectory": true,
+            "createDesktopShortcut": true,
+            "createStartMenuShortcut": true,
+            "artifactName": "VideoDestroyer-${version}-SETUP.${ext}"
+        },
+        "linux": {
+            "target": [
+                {
+                    "target": "AppImage",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ],
+            "category": "AudioVideo;Video",
+            "synopsis": "Build AI training datasets from video with VapourSynth",
+            "icon": "build/icon.svg",
+            "executableName": "video-destroyer",
+            "syncDesktopName": true,
+            "desktop": {
+                "entry": {
+                    "Name": "Video Destroyer",
+                    "Comment": "Build AI training datasets from video with VapourSynth",
+                    "Keywords": "video;dataset;VapourSynth;AI;training;",
+                    "StartupWMClass": "video-destroyer"
+                }
+            },
+            "artifactName": "VideoDestroyer-${version}-${arch}.${ext}"
+        }
+    }
+}

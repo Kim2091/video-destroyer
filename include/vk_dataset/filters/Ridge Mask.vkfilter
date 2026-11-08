@@ -1,0 +1,15 @@
+name = "Ridge Mask"
+category = "Masking"
+code = """
+# Full Docs: https://jaded-encoding-thaumaturgy.github.io/vs-jetpack/api/vsmasktools/edge/
+
+from vsmasktools import Sobel
+
+# RidgeDetect is now an abstract base class; Sobel is a concrete ridge-capable
+# detector (same choice as the "Sobel Edge Mask" template).
+mask = Sobel().ridgemask(clip, lthr=0.0, hthr=65535, multi=1.0)
+clip = mask"""
+description = "Creates a ridge mask for detecting lines and edges from vsmasktools"
+
+[metadata]
+createdAt = "2026-01-31T00:00:00.000Z"

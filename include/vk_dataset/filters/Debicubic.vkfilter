@@ -1,0 +1,18 @@
+name = "Debicubic"
+category = ["Hybrid", "Unresize"]
+code = """
+# Reverse bicubic upscaling
+# The bundled descale.py wrapper calls a dispatcher (core.descale.Descale)
+# that no longer exists on the native descale plugin, which now exposes
+# Debicubic/Debilinear/Delanczos/... directly. vskernels wraps those natively
+# and handles YUV chroma planes automatically, so use it instead.
+from vskernels import Bicubic
+from vstools import depth
+
+src_depth = clip.format.bits_per_sample
+clip = Bicubic(b=0.0, c=0.5).descale(depth(clip, 32), width=1280, height=720)
+clip = depth(clip, src_depth)"""
+description = "Reverses bicubic upscaling to restore original resolution"
+
+[metadata]
+createdAt = "2026-02-01T00:00:00.000Z"

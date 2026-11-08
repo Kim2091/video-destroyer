@@ -1,0 +1,21 @@
+name = "Difference Mask"
+category = "Masking"
+code = """
+# Full Docs: https://jaded-encoding-thaumaturgy.github.io/vs-jetpack/api/vsmasktools/diff/
+
+from vsmasktools import Morpho
+from vsexprtools import norm_expr
+
+# vsmasktools dropped its generic two-clip diff_mask() in favor of specialized
+# helpers (credits/rescale detection). Rebuild the plain "absolute difference,
+# optionally binarized" mask by hand.
+clip_a = clip
+clip_b = clip  # Replace with your second clip
+thr = 0  # Threshold for differences; 0 leaves the raw abs-diff unbinarized
+clip = norm_expr([clip_a, clip_b], "x y - abs")
+if thr > 0:
+    clip = Morpho.binarize_mask(clip, midthr=thr)"""
+description = "Creates a mask showing the difference between two clips"
+
+[metadata]
+createdAt = "2026-01-31T00:00:00.000Z"

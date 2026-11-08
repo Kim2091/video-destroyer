@@ -1,0 +1,172 @@
+// electron/logger.ts
+import log from 'electron-log';
+import { app, BrowserWindow } from 'electron';
+import * as path from 'path';
+import * as fs from 'fs/promises';
+import * as fsSync from 'fs';
+
+/**
+ * Centralized logging utility for the application
+ * Logs are stored in portable mode:
+ * - Development: <project>/data/logs/main.log
+ * - Windows production: <exe-directory>/data/logs/main.log
+ * - Linux production: <Electron userData>/data/logs/main.log
+ * 
+ * Log rotation:
+ * - On startup, if main.log exceeds 15,000 lines, it's rotated to main_YYYY-MM-DDTHH-MM-SS.log
+ * - A fresh main.log is then created for the new session
+ */
+
+// Windows keeps portable logs beside the executable. AppImages are mounted
+// read-only, so packaged Linux builds must use Electron's XDG-backed data path.
+const appDataPath = app.isPackaged
+  ? process.platform === 'win32'
+    ? path.join(path.dirname(app.getPath('exe')), 'data')
+    : path.join(app.getPath('userData'), 'data')
+  : path.join(app.getAppPath(), 'data');
+const logPath = path.join(appDataPath, 'logs', 'main.log');
+
+// Log rotation state - will be updated asynchronously
+const MAX_LOG_LINES = 15000;
+let logRotated = false;
+let rotatedBackupName = '';
+
+// Async log rotation - runs after logger is configured
+async function rotateLogIfNeeded(): Promise<void> {
+  try {
+    try {
+      await fs.access(logPath);
+    } catch {
+      // File doesn't exist, no rotation needed
+      return;
+    }
+    
+    const logContent = await fs.readFile(logPath, 'utf-8');
+    const lineCount = logContent.split('\n').length;
+    
+    if (lineCount > MAX_LOG_LINES) {
+      // Create timestamped backup filename
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const backupName = `main_${timestamp}.log`;
+      const backupPath = path.join(path.dirname(logPath), backupName);
+      
+      // Rename current log to backup
+      await fs.rename(logPath, backupPath);
+      logRotated = true;
+      rotatedBackupName = backupName;
+      
+      log.info(`Previous log exceeded ${MAX_LOG_LINES} lines - rotated to ${rotatedBackupName}`);
+    }
+  } catch (error) {
+    // If rotation fails, continue anyway - better to have logs than crash
+    console.error('Failed to rotate log file:', error);
+  }
+}
+
+// Configure electron-log
+log.transports.file.resolvePathFn = () => logPath;
+log.transports.file.level = process.env.NODE_ENV === 'development' ? 'debug' : 'info';
+log.transports.file.maxSize = 10 * 1024 * 1024; // 10MB
+log.transports.console.level = process.env.NODE_ENV === 'development' ? 'debug' : 'info';
+
+// Add timestamp format
+log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}';
+log.transports.console.format = '[{h}:{i}:{s}.{ms}] [{level}] {text}';
+
+// Main window reference for sending logs to renderer
+let mainWindowRef: BrowserWindow | null = null;
+
+// Log application start
+log.info('='.repeat(80));
+log.info(`Video Destroyer v${app.getVersion()} - Starting`);
+log.info(`Environment: ${process.env.NODE_ENV || 'production'}`);
+log.info(`Platform: ${process.platform} ${process.arch}`);
+log.info(`Electron: ${process.versions.electron}`);
+log.info(`Node: ${process.versions.node}`);
+log.info(`Log file: ${logPath}`);
+log.info('='.repeat(80));
+
+// Perform async log rotation after initial log messages
+rotateLogIfNeeded().catch(err => {
+  console.error('Log rotation failed:', err);
+});
+
+// Helper to format log messages with arguments
+const formatMessage = (message: string, args: any[]): string => {
+  return args.length > 0 
+    ? `${message} ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ')}` 
+    : message;
+};
+
+// NOTE: Real-time IPC log forwarding has been removed to improve performance.
+// The renderer now polls the log file every second instead.
+// This dramatically reduces IPC traffic during long processing sessions and
+// prevents memory/render issues that could cause the UI to go blank.
+// 
+// The sendToRenderer function is kept but commented out for reference:
+// const sendToRenderer = (level: string, message: string, ...args: any[]) => {
+//   if (mainWindowRef && !mainWindowRef.isDestroyed()) {
+//     mainWindowRef.webContents.send('dev-console-log', {
+//       level,
+//       message: formatMessage(message, args),
+//       timestamp: new Date().toISOString()
+//     });
+//   }
+// };
+
+export const logger = {
+  info: (message: string, ...args: any[]) => {
+    log.info(message, ...args);
+  },
+  warn: (message: string, ...args: any[]) => {
+    log.warn(message, ...args);
+  },
+  error: (message: string, ...args: any[]) => {
+    log.error(message, ...args);
+  },
+  
+  // Error with user dialog notification (now just logs - renderer handles UI)
+  errorWithDialog: (title: string, message: string, ...args: any[]) => {
+    log.error(`[${title}] ${message}`, ...args);
+    // Removed dialog.showErrorBox to prevent focus stealing issues
+    // Error messages should be sent through IPC channels to renderer
+  },
+  debug: (message: string, ...args: any[]) => {
+    log.debug(message, ...args);
+  },
+  
+  // Specialized logging methods
+  dependency: (message: string, ...args: any[]) => {
+    log.info(`[DEPENDENCY] ${message}`, ...args);
+  },
+  model: (message: string, ...args: any[]) => {
+    log.info(`[MODEL] ${message}`, ...args);
+  },
+  
+  // Get log file path for user access
+  getLogPath: () => logPath,
+  
+  // Get logs directory
+  getLogsDir: () => path.dirname(logPath),
+  
+  // Log separator for major operations
+  separator: () => {
+    log.info('-'.repeat(80));
+  },
+  
+  // Set main window reference for error dialogs
+  setMainWindow: (window: BrowserWindow | null) => {
+    mainWindowRef = window;
+  }
+};
+
+// Handle uncaught errors
+process.on('uncaughtException', (error) => {
+  log.error('Uncaught Exception:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+export default logger;

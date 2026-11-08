@@ -1,0 +1,155 @@
+import * as path from 'path';
+import { spawnSync } from 'child_process';
+import { app } from 'electron';
+import { VAPOURSYNTH_VERSION } from './vapoursynthCore';
+
+// The core VapourSynth pin lives in vapoursynthCore.ts, which imports nothing,
+// so error formatting can name it without pulling in Electron.
+export { VAPOURSYNTH_VERSION };
+export const VAPOURSYNTH_PIP_SPEC = `vapoursynth==${VAPOURSYNTH_VERSION}`;
+
+// Current vapoursynth-mlrt-trt / vapoursynth-mlrt-ort PyPI version.
+// Update this when upgrading vs-mlrt; a change prompts users to rebuild engines.
+export const VS_MLRT_VERSION = '16.1';
+
+// NCNN is released independently of the ORT/TRT wheels. Pin it separately so
+// Linux installs stay reproducible without requesting a non-existent 16.1 wheel.
+export const VS_MLRT_NCNN_VERSION = '15.16';
+
+// MIGraphX (AMD) ships as a PyPI wheel on Linux x86_64 only; it links against
+// the system ROCm install. vsjetpack[amd] already pulls it at >=15.16, so this
+// pin only makes the version explicit.
+export const VS_MLRT_MIGX_VERSION = '17.0';
+
+// On Windows MIGraphX is not on any pip index: it comes from the vs-mlrt GitHub
+// release as VSMIGX-Windows-x64 (the plugin) plus vsmlrt-hip (the HIP and
+// MIGraphX runtime, 68 MB download / 383 MB unpacked). Stays on the latest
+// non-prerelease tag.
+export const VS_MLRT_MIGX_WINDOWS_RELEASE = 'v15.16';
+
+// Extra package indexes required by the PyPI install:
+// - pypi.nvidia.com hosts the TensorRT (tensorrt-cu13*) wheels
+// - the JET vs-wheels index hosts vapoursynth-* plugin wheels not on PyPI
+export const PYPI_EXTRA_INDEX_ARGS = [
+  '--extra-index-url', 'https://pypi.nvidia.com/',
+  '--extra-index-url', 'https://jaded-encoding-thaumaturgy.github.io/vs-wheels/simple',
+];
+
+// Network flags for the install-time pip runs (setup, plugin install, the
+// VapourSynth pin). pip's socket timeout defaults to 15 s, and pypi.nvidia.com
+// in particular goes quiet for longer than that mid-way through a 2 GB torch
+// or TensorRT wheel on a slow link, which fails the whole install. 30 s rides
+// that out without leaving a dead connection hanging for minutes. --retries is
+// pip's default (5 connection attempts) written out, so a future pip changing
+// its default cannot quietly make installs less patient; resuming a download
+// cut off mid-body is pip's --resume-retries, whose default (5 in pip 26) is
+// already what we want. The launch-time top-up keeps its own shorter figures
+// so an offline launch is not held up (see ensurePackageRequirements).
+//
+// --progress-bar off: output is piped, and pip 26 already draws no bar when
+// it is not a terminal (none appears in the logs), so nothing reads it; the
+// flag keeps it that way, since a redrawn bar would fill the captured output
+// the error classifier reads from.
+export const PIP_NETWORK_ARGS = ['--retries', '5', '--timeout', '30', '--progress-bar', 'off'];
+
+// Platform helpers — keep every platform-specific filename/layout decision in
+// this file so a Linux build only needs changes here (plus a venv bootstrap in
+// dependencyManager instead of the Windows embedded-Python download).
+export const IS_WINDOWS = process.platform === 'win32';
+const EXE = IS_WINDOWS ? '.exe' : '';
+const DLL = IS_WINDOWS ? '.dll' : '.so';
+
+// Embedded Python version installed by the Windows bootstrap. This is also the
+// first supported Linux ABI; the actual Linux site-packages path is queried
+// from its venv interpreter below.
+export const PYTHON_VERSION = '3.13.0';
+const PYTHON_XY = PYTHON_VERSION.split('.').slice(0, 2).join('.');
+
+// Windows keeps its portable data folder beside the executable. AppImages are
+// mounted read-only, so packaged Linux builds must use Electron's writable
+// per-user data directory instead.
+export const APP_DATA_PATH = app.isPackaged
+  ? IS_WINDOWS
+    ? path.join(path.dirname(app.getPath('exe')), 'data')
+    : path.join(app.getPath('userData'), 'data')
+  : path.join(app.getAppPath(), 'data');
+
+const VS_PATH = path.join(APP_DATA_PATH, 'vapoursynth-portable');
+
+/**
+ * A Linux venv follows the host interpreter's Python X.Y, which may differ
+ * from the Windows embedded runtime. Ask the venv interpreter for its exact
+ * site-packages directory rather than inferring it from the filesystem.
+ */
+export function resolveLinuxSitePackages(vsPath: string = VS_PATH): string {
+  const pythonPath = path.join(vsPath, 'bin', 'python3');
+  const result = spawnSync(
+    pythonPath,
+    ['-c', 'import site; print(site.getsitepackages()[0])'],
+    { encoding: 'utf8', windowsHide: true },
+  );
+  const sitePackages = result.status === 0 ? result.stdout.trim() : '';
+  if (sitePackages) {
+    return sitePackages;
+  }
+  // The venv has not been created yet. This fallback is only used during its
+  // bootstrap; the next PATHS.SITE_PACKAGES access queries the interpreter.
+  const libDir = path.join(vsPath, 'lib');
+  return path.join(libDir, `python${PYTHON_XY}`, 'site-packages');
+}
+
+// Centralized path constants
+//
+// The VapourSynth runtime is installed from PyPI into the Python environment's
+// site-packages: vspipe and the core libraries live in site-packages/vapoursynth,
+// and plugins autoload from site-packages/vapoursynth/plugins (pip plugin wheels
+// install into per-plugin subfolders there; bundled extra DLLs go in its root).
+export const PATHS = {
+  APP_DATA: APP_DATA_PATH,
+  VS: VS_PATH,
+  get SITE_PACKAGES() {
+    return IS_WINDOWS
+      ? path.join(VS_PATH, 'Lib', 'site-packages')
+      : resolveLinuxSitePackages();
+  },
+  get PLUGINS() { return path.join(this.SITE_PACKAGES, 'vapoursynth', 'plugins'); },
+  SCRIPTS: path.join(VS_PATH, 'vs-scripts'),
+  // Working folder of the TensorRT engine builder
+  MODELS: path.join(APP_DATA_PATH, 'models'),
+  CONFIG: path.join(APP_DATA_PATH, 'config'),
+  PIP_CACHE: path.join(APP_DATA_PATH, 'pip-cache'),
+  // trtexec shim written by trtexecShim.ts. vsmlrt.py builds TensorRT engines
+  // at runtime by spawning trtexec, which the TensorRT pip wheels don't ship;
+  // the shim forwards the trtexec-style arguments to the app's own Python API
+  // engine builder. vk_runtime.configure() takes its path as trtexec_path.
+  TRTEXEC_SHIM: path.join(APP_DATA_PATH, IS_WINDOWS ? 'trtexec.cmd' : 'trtexec'),
+
+  // Executables
+  get VSPIPE() { return path.join(this.SITE_PACKAGES, 'vapoursynth', `vspipe${EXE}`); },
+  get PYTHON() {
+    return IS_WINDOWS ? path.join(this.VS, 'python.exe') : path.join(this.VS, 'bin', 'python3');
+  },
+
+  // Key pip-installed plugin/package locations used for install health checks.
+  // The plain "ort" folder is removed post-install when the CUDA build is
+  // present (see applyPluginCompatibilityFixes), so ORT checks must accept both.
+  get BESTSOURCE_DLL() { return path.join(this.PLUGINS, `libbestsource${DLL}`); },
+  get ORT_PLUGIN_DLL() { return path.join(this.PLUGINS, 'ort', IS_WINDOWS ? 'vsort.dll' : 'libvsort.so'); },
+  get ORT_CUDA_PLUGIN_DLL() { return path.join(this.PLUGINS, 'ort-cuda', IS_WINDOWS ? 'vsort.dll' : 'libvsort.so'); },
+  get NCNN_PLUGIN_DLL() { return path.join(this.PLUGINS, IS_WINDOWS ? 'vsncnn.dll' : 'libvsncnn.so'); },
+  get TRT_PLUGIN_DLL() { return path.join(this.PLUGINS, 'trt', IS_WINDOWS ? 'vstrt.dll' : 'libvstrt.so'); },
+  // Windows: app-installed from the GitHub release into plugins\migx, beside the
+  // vsmlrt-hip runtime folder vsmigx.dll preloads from. Linux: the pip wheel
+  // drops libvsmigx.so straight into the plugins root.
+  get MIGX_PLUGIN_DIR() { return path.join(this.PLUGINS, 'migx'); },
+  get MIGX_PLUGIN_DLL() {
+    return IS_WINDOWS ? path.join(this.MIGX_PLUGIN_DIR, 'vsmigx.dll') : path.join(this.PLUGINS, 'libvsmigx.so');
+  },
+  get MIGX_DRIVER_WIN() { return path.join(this.MIGX_PLUGIN_DIR, 'vsmlrt-hip', 'migraphx-driver.exe'); },
+  get TENSORRT_PACKAGE() { return path.join(this.SITE_PACKAGES, 'tensorrt'); },
+
+  // FFmpeg
+  FFMPEG_DIR: path.join(APP_DATA_PATH, 'ffmpeg'),
+  get FFMPEG() { return path.join(this.FFMPEG_DIR, 'bin', `ffmpeg${EXE}`); },
+  get FFPROBE() { return path.join(this.FFMPEG_DIR, 'bin', `ffprobe${EXE}`); }
+} as const;

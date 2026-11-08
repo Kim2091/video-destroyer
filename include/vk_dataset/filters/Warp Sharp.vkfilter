@@ -1,0 +1,18 @@
+name = "Warp Sharp"
+category = "Sharpening"
+code = """
+# Warp-based sharpening (strong effect)
+# Full Docs: https://github.com/HomeOfVapourSynthEvolution/VapourSynth-AWarpSharp2
+# The old warp plugin is gone; vsrgtools.awarpsharp() wraps its awarp (Vulkan)
+# replacement. depth_h/depth_v replace the single "depth" magnitude.
+
+from vsrgtools import awarpsharp
+
+blur = 2  # Pre-blur amount (0-3)
+warp_depth = 16  # Warp depth (strength)
+
+clip = awarpsharp(clip, blur=blur, depth_h=warp_depth, depth_v=warp_depth)"""
+description = "Aggressive edge-based sharpening using warp algorithm"
+
+[metadata]
+createdAt = "2026-01-31T00:00:00.000Z"

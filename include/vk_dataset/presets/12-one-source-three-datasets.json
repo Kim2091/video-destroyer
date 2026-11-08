@@ -1,0 +1,270 @@
+{
+ "version": 1,
+ "seed": 12,
+ "name": "12. One source, three datasets",
+ "description": "Decodes and splits the video once, then writes three datasets with the same HR into three subfolders: 2x with mild web damage, 2x with heavy DVD-like damage (two LR versions per HR), and 4x. Good for comparing recipes fairly.",
+ "summary": "2x mild, 2x heavy and 4x from one run",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "ui": {
+    "x": 0,
+    "y": 0
+   },
+   "note": "Choose your high-quality video."
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "ui": {
+    "x": 300,
+    "y": 0
+   },
+   "note": "One chunk per scene, shared by all three."
+  },
+  {
+   "id": "half",
+   "type": "resample",
+   "params": {
+    "size": "scale",
+    "scale": 0.5
+   },
+   "ui": {
+    "x": 600,
+    "y": 300
+   },
+   "note": "Half size, for both 2x sets."
+  },
+  {
+   "id": "mild_comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264",
+    "quality": {
+     "uniform": [
+      0.6,
+      1.0
+     ]
+    }
+   },
+   "ui": {
+    "x": 900,
+    "y": 300
+   },
+   "note": "Mild: light H.264."
+  },
+  {
+   "id": "seq_mild",
+   "type": "make_sequences",
+   "params": {},
+   "ui": {
+    "x": 1800,
+    "y": 0
+   },
+   "note": "2x mild pairs."
+  },
+  {
+   "id": "out_mild",
+   "type": "write_dataset",
+   "params": {
+    "directory": "",
+    "subfolder": "2x_mild"
+   },
+   "ui": {
+    "x": 2100,
+    "y": 0
+   },
+   "note": "Into 2x_mild/."
+  },
+  {
+   "id": "heavy_blur",
+   "type": "optics_blur",
+   "params": {},
+   "ui": {
+    "x": 900,
+    "y": 600
+   },
+   "note": "Heavy: soft."
+  },
+  {
+   "id": "heavy_sharp",
+   "type": "sharpen",
+   "params": {
+    "amount": {
+     "uniform": [
+      0.6,
+      1.5
+     ]
+    }
+   },
+   "ui": {
+    "x": 1200,
+    "y": 600
+   },
+   "note": "Heavy: oversharpened."
+  },
+  {
+   "id": "heavy_comp",
+   "type": "codec",
+   "params": {
+    "profile": "dvd_mpeg2",
+    "quality": {
+     "uniform": [
+      0.0,
+      0.5
+     ]
+    }
+   },
+   "ui": {
+    "x": 1500,
+    "y": 600
+   },
+   "note": "Heavy: low-bitrate MPEG-2."
+  },
+  {
+   "id": "seq_heavy",
+   "type": "make_sequences",
+   "params": {},
+   "ui": {
+    "x": 1800,
+    "y": 600
+   },
+   "note": "2x heavy pairs."
+  },
+  {
+   "id": "out_heavy",
+   "type": "write_dataset",
+   "params": {
+    "directory": "",
+    "subfolder": "2x_heavy",
+    "variants": 2
+   },
+   "ui": {
+    "x": 2100,
+    "y": 600
+   },
+   "note": "Into 2x_heavy/, two LR versions per HR."
+  },
+  {
+   "id": "quarter",
+   "type": "resample",
+   "params": {
+    "size": "scale",
+    "scale": 0.25
+   },
+   "ui": {
+    "x": 600,
+    "y": 900
+   },
+   "note": "Quarter size."
+  },
+  {
+   "id": "quarter_comp",
+   "type": "codec",
+   "params": {
+    "profile": "web_h264"
+   },
+   "ui": {
+    "x": 900,
+    "y": 900
+   },
+   "note": "4x: web compression."
+  },
+  {
+   "id": "seq_4x",
+   "type": "make_sequences",
+   "params": {},
+   "ui": {
+    "x": 1800,
+    "y": 900
+   },
+   "note": "4x pairs."
+  },
+  {
+   "id": "out_4x",
+   "type": "write_dataset",
+   "params": {
+    "directory": "",
+    "subfolder": "4x"
+   },
+   "ui": {
+    "x": 2100,
+    "y": 900
+   },
+   "note": "Into 4x/."
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "half.clip"
+  },
+  {
+   "from": "half.clip",
+   "to": "mild_comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq_mild.hr"
+  },
+  {
+   "from": "mild_comp.clip",
+   "to": "seq_mild.lr"
+  },
+  {
+   "from": "seq_mild.sequences",
+   "to": "out_mild.sequences"
+  },
+  {
+   "from": "half.clip",
+   "to": "heavy_blur.clip"
+  },
+  {
+   "from": "heavy_blur.clip",
+   "to": "heavy_sharp.clip"
+  },
+  {
+   "from": "heavy_sharp.clip",
+   "to": "heavy_comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq_heavy.hr"
+  },
+  {
+   "from": "heavy_comp.clip",
+   "to": "seq_heavy.lr"
+  },
+  {
+   "from": "seq_heavy.sequences",
+   "to": "out_heavy.sequences"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "quarter.clip"
+  },
+  {
+   "from": "quarter.clip",
+   "to": "quarter_comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq_4x.hr"
+  },
+  {
+   "from": "quarter_comp.clip",
+   "to": "seq_4x.lr"
+  },
+  {
+   "from": "seq_4x.sequences",
+   "to": "out_4x.sequences"
+  }
+ ]
+}

@@ -1,0 +1,432 @@
+{
+ "version": 1,
+ "seed": 10,
+ "name": "16. DVD anime",
+ "description": "LR made the way an anime DVD is: mastered down to an anamorphic NTSC or PAL frame (NTSC discs mostly 3:2 pulled down) with mild halos, MPEG-2 encoded with DVD settings, then decoded, badly de-telecined, smoothed and scaled up by a player. HR is the clean Blu-ray. Grain is added to LR only, so the model learns to remove it; move Film Grain in front of Split into Chunks to keep grain in both.",
+ "summary": "Blu-ray anime to DVD-quality LR",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "note": "Choose your high-quality video (or a folder of videos).",
+   "ui": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "note": "One chunk per scene, each with its own random settings.",
+   "ui": {
+    "x": 300,
+    "y": 0
+   }
+  },
+  {
+   "id": "grain",
+   "type": "film_grain",
+   "params": {
+    "probability": 0.5,
+    "strength": {
+     "uniform": [
+      1.5,
+      4.0
+     ]
+    },
+    "size": {
+     "uniform": [
+      1.6,
+      2.6
+     ]
+    },
+    "chroma": {
+     "uniform": [
+      0.0,
+      0.2
+     ]
+    }
+   },
+   "note": "LR only: grain on half the chunks.",
+   "ui": {
+    "x": 600,
+    "y": 300
+   }
+  },
+  {
+   "id": "ntsc",
+   "type": "resample",
+   "label": "NTSC Master",
+   "params": {
+    "size": "720x480"
+   },
+   "note": "Master down to 720x480.",
+   "ui": {
+    "x": 900,
+    "y": 300
+   }
+  },
+  {
+   "id": "fields",
+   "type": "telecine",
+   "params": {
+    "probability": 0.7,
+    "source": "film"
+   },
+   "note": "3:2 pulldown on 70% of NTSC discs.",
+   "ui": {
+    "x": 1200,
+    "y": 300
+   }
+  },
+  {
+   "id": "pal",
+   "type": "resample",
+   "label": "PAL Master",
+   "params": {
+    "size": "720x576"
+   },
+   "note": "Master down to 720x576: no pulldown.",
+   "ui": {
+    "x": 1200,
+    "y": 600
+   }
+  },
+  {
+   "id": "disc",
+   "type": "random_branch",
+   "params": {
+    "weights": [
+     0.5,
+     0.5,
+     0.0,
+     0.0
+    ]
+   },
+   "note": "An NTSC or a PAL disc, half each.",
+   "ui": {
+    "x": 1500,
+    "y": 300
+   }
+  },
+  {
+   "id": "halos",
+   "type": "sharpen",
+   "params": {
+    "probability": 0.5
+   },
+   "note": "DVD mastering halos, 50%.",
+   "ui": {
+    "x": 1800,
+    "y": 300
+   }
+  },
+  {
+   "id": "bleed",
+   "type": "chroma_bleed",
+   "params": {
+    "probability": 0.3,
+    "shift": {
+     "uniform": [
+      -0.75,
+      0.75
+     ]
+    }
+   },
+   "note": "Mild colour bleed, 30%.",
+   "ui": {
+    "x": 2100,
+    "y": 300
+   }
+  },
+  {
+   "id": "bands",
+   "type": "quantize",
+   "params": {
+    "probability": 0.3
+   },
+   "note": "Banding in gradients, 30%.",
+   "ui": {
+    "x": 2400,
+    "y": 300
+   }
+  },
+  {
+   "id": "dvd",
+   "type": "codec",
+   "params": {
+    "profile": "dvd_mpeg2",
+    "quality": {
+     "uniform": [
+      0.08,
+      0.83
+     ]
+    }
+   },
+   "note": "DVD MPEG-2: 0.35 to 0.8 bits per pixel.",
+   "ui": {
+    "x": 2700,
+    "y": 300
+   }
+  },
+  {
+   "id": "fix",
+   "type": "telecine_fix",
+   "params": {},
+   "note": "The player undoes the pulldown badly.",
+   "ui": {
+    "x": 3000,
+    "y": 300
+   }
+  },
+  {
+   "id": "deblock",
+   "type": "player_deblock",
+   "params": {},
+   "note": "Player deblocking.",
+   "ui": {
+    "x": 3300,
+    "y": 300
+   }
+  },
+  {
+   "id": "dnr",
+   "type": "player_dnr",
+   "params": {},
+   "note": "Player noise reduction.",
+   "ui": {
+    "x": 3300,
+    "y": 600
+   }
+  },
+  {
+   "id": "both",
+   "type": "player_dnr",
+   "label": "Player DNR after Deblock",
+   "params": {},
+   "note": "Deblocking, then noise reduction.",
+   "ui": {
+    "x": 3600,
+    "y": 300
+   }
+  },
+  {
+   "id": "player",
+   "type": "random_branch",
+   "params": {
+    "weights": [
+     0.125,
+     0.075,
+     0.05,
+     0.75
+    ]
+   },
+   "note": "25% get deblock, DNR or both.",
+   "ui": {
+    "x": 3900,
+    "y": 300
+   }
+  },
+  {
+   "id": "chroma",
+   "type": "chroma_subsample",
+   "params": {
+    "interlaced_error": 0.15
+   },
+   "note": "Player colour upsampling.",
+   "ui": {
+    "x": 4200,
+    "y": 300
+   }
+  },
+  {
+   "id": "up",
+   "type": "scale_to_model",
+   "params": {
+    "scale": 2
+   },
+   "note": "Player scales to the model's LR size.",
+   "ui": {
+    "x": 4500,
+    "y": 300
+   }
+  },
+  {
+   "id": "upload",
+   "type": "codec",
+   "params": {
+    "probability": 0.25,
+    "profile": "web_h264",
+    "quality": {
+     "uniform": [
+      0.6,
+      1.0
+     ]
+    }
+   },
+   "note": "Fan upload re-encode, 25%.",
+   "ui": {
+    "x": 4800,
+    "y": 300
+   }
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "note": "5-frame sequences; HR from the chunk, LR from the damage chain.",
+   "ui": {
+    "x": 5100,
+    "y": 0
+   }
+  },
+  {
+   "id": "blank",
+   "type": "reject_blank",
+   "params": {},
+   "note": "Drops fades and black frames.",
+   "ui": {
+    "x": 5400,
+    "y": 0
+   }
+  },
+  {
+   "id": "motion",
+   "type": "reject_motion",
+   "params": {},
+   "note": "Drops still or cut-crossing sequences.",
+   "ui": {
+    "x": 5700,
+    "y": 0
+   }
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "note": "Pick an output folder.",
+   "ui": {
+    "x": 6000,
+    "y": 0
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "grain.clip"
+  },
+  {
+   "from": "grain.clip",
+   "to": "ntsc.clip"
+  },
+  {
+   "from": "ntsc.clip",
+   "to": "fields.clip"
+  },
+  {
+   "from": "grain.clip",
+   "to": "pal.clip"
+  },
+  {
+   "from": "fields.clip",
+   "to": "disc.in_1"
+  },
+  {
+   "from": "pal.clip",
+   "to": "disc.in_2"
+  },
+  {
+   "from": "disc.clip",
+   "to": "halos.clip"
+  },
+  {
+   "from": "halos.clip",
+   "to": "bleed.clip"
+  },
+  {
+   "from": "bleed.clip",
+   "to": "bands.clip"
+  },
+  {
+   "from": "bands.clip",
+   "to": "dvd.clip"
+  },
+  {
+   "from": "dvd.clip",
+   "to": "fix.clip"
+  },
+  {
+   "from": "fix.clip",
+   "to": "deblock.clip"
+  },
+  {
+   "from": "fix.clip",
+   "to": "dnr.clip"
+  },
+  {
+   "from": "deblock.clip",
+   "to": "both.clip"
+  },
+  {
+   "from": "deblock.clip",
+   "to": "player.in_1"
+  },
+  {
+   "from": "dnr.clip",
+   "to": "player.in_2"
+  },
+  {
+   "from": "both.clip",
+   "to": "player.in_3"
+  },
+  {
+   "from": "fix.clip",
+   "to": "player.in_4"
+  },
+  {
+   "from": "player.clip",
+   "to": "chroma.clip"
+  },
+  {
+   "from": "chroma.clip",
+   "to": "up.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "up.hr"
+  },
+  {
+   "from": "up.clip",
+   "to": "upload.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "upload.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "blank.sequences"
+  },
+  {
+   "from": "blank.sequences",
+   "to": "motion.sequences"
+  },
+  {
+   "from": "motion.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

@@ -1,0 +1,236 @@
+{
+ "version": 1,
+ "seed": 10,
+ "name": "15. VHS tape",
+ "description": "LR goes through an analogue chain: encoded to NTSC composite, recorded to a VHS tape of a different grade per chunk (sometimes dubbed), played on a home VCR or an S-VHS deck with TBC, decoded and captured to MPEG-2. One tape feeds both decks; Random Branch runs only the one it picks. Best from HD sources, which Resample brings to SD size first.",
+ "summary": "Simulated VHS recordings",
+ "nodes": [
+  {
+   "id": "src",
+   "type": "load_video",
+   "params": {},
+   "note": "Choose your high-quality video.",
+   "ui": {
+    "x": 0,
+    "y": 0
+   }
+  },
+  {
+   "id": "chunks",
+   "type": "chunk",
+   "params": {},
+   "note": "One chunk per scene.",
+   "ui": {
+    "x": 300,
+    "y": 0
+   }
+  },
+  {
+   "id": "down",
+   "type": "resample",
+   "params": {
+    "size": "720x480"
+   },
+   "note": "Down to an SD frame.",
+   "ui": {
+    "x": 600,
+    "y": 300
+   }
+  },
+  {
+   "id": "enc",
+   "type": "ntsc_encode",
+   "params": {},
+   "note": "Into a composite signal.",
+   "ui": {
+    "x": 900,
+    "y": 300
+   }
+  },
+  {
+   "id": "tape",
+   "type": "ntsc_tape",
+   "params": {},
+   "note": "Any tape grade per chunk.",
+   "ui": {
+    "x": 1200,
+    "y": 300
+   }
+  },
+  {
+   "id": "dub",
+   "type": "ntsc_tape",
+   "params": {
+    "probability": 0.3
+   },
+   "note": "A dub on 30% of the chunks.",
+   "ui": {
+    "x": 1500,
+    "y": 300
+   }
+  },
+  {
+   "id": "vcr",
+   "type": "ntsc_deck",
+   "params": {
+    "deck": "consumer"
+   },
+   "note": "Home VCR.",
+   "ui": {
+    "x": 1800,
+    "y": 150
+   }
+  },
+  {
+   "id": "vcr_cap",
+   "type": "ntsc_decode",
+   "params": {},
+   "note": "Captured.",
+   "ui": {
+    "x": 2100,
+    "y": 150
+   }
+  },
+  {
+   "id": "tbc",
+   "type": "ntsc_deck",
+   "params": {
+    "deck": "svhs-tbc"
+   },
+   "note": "S-VHS deck with TBC.",
+   "ui": {
+    "x": 1800,
+    "y": 450
+   }
+  },
+  {
+   "id": "tbc_cap",
+   "type": "ntsc_decode",
+   "params": {},
+   "note": "Captured.",
+   "ui": {
+    "x": 2100,
+    "y": 450
+   }
+  },
+  {
+   "id": "pick",
+   "type": "random_branch",
+   "params": {
+    "weights": [
+     0.6,
+     0.4,
+     0.0,
+     0.0
+    ]
+   },
+   "note": "60% VCR, 40% S-VHS deck.",
+   "ui": {
+    "x": 2400,
+    "y": 300
+   }
+  },
+  {
+   "id": "comp",
+   "type": "codec",
+   "params": {
+    "profile": "dvd_mpeg2",
+    "quality": {
+     "uniform": [
+      0.2,
+      0.9
+     ]
+    }
+   },
+   "note": "Captured to DVD-R style MPEG-2.",
+   "ui": {
+    "x": 2700,
+    "y": 300
+   }
+  },
+  {
+   "id": "seq",
+   "type": "make_sequences",
+   "params": {},
+   "note": "5-frame sequences.",
+   "ui": {
+    "x": 3000,
+    "y": 0
+   }
+  },
+  {
+   "id": "out",
+   "type": "write_dataset",
+   "params": {
+    "directory": ""
+   },
+   "note": "Pick an output folder.",
+   "ui": {
+    "x": 3300,
+    "y": 0
+   }
+  }
+ ],
+ "edges": [
+  {
+   "from": "src.clip",
+   "to": "chunks.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "down.clip"
+  },
+  {
+   "from": "down.clip",
+   "to": "enc.clip"
+  },
+  {
+   "from": "enc.signal",
+   "to": "tape.signal"
+  },
+  {
+   "from": "tape.signal",
+   "to": "dub.signal"
+  },
+  {
+   "from": "dub.signal",
+   "to": "vcr.signal"
+  },
+  {
+   "from": "vcr.signal",
+   "to": "vcr_cap.signal"
+  },
+  {
+   "from": "dub.signal",
+   "to": "tbc.signal"
+  },
+  {
+   "from": "tbc.signal",
+   "to": "tbc_cap.signal"
+  },
+  {
+   "from": "vcr_cap.clip",
+   "to": "pick.in_1"
+  },
+  {
+   "from": "tbc_cap.clip",
+   "to": "pick.in_2"
+  },
+  {
+   "from": "pick.clip",
+   "to": "comp.clip"
+  },
+  {
+   "from": "chunks.clip",
+   "to": "seq.hr"
+  },
+  {
+   "from": "comp.clip",
+   "to": "seq.lr"
+  },
+  {
+   "from": "seq.sequences",
+   "to": "out.sequences"
+  }
+ ]
+}

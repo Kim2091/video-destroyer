@@ -1,0 +1,1600 @@
+{
+ "chunks": [
+  [
+   0,
+   72
+  ],
+  [
+   72,
+   144
+  ]
+ ],
+ "scenarios": {
+  "example_6": {
+   "params": {
+    "length": 9,
+    "scale": 2,
+    "per_chunk": 3,
+    "margin": 4,
+    "crops_per_sequence": 2,
+    "tile_size": 64,
+    "tile_threshold": 0.0015,
+    "crop_edge_margin": 8,
+    "crop_motion_bias": 1.0,
+    "min_alignment_score": 0.7,
+    "min_crop_alignment_score": 0.82,
+    "crop_align_candidates": 3,
+    "max_drift": 0,
+    "drift_frames": 2
+   },
+   "sequences": [
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       63
+      ],
+      "lr": [
+       59,
+       60,
+       61,
+       62,
+       63,
+       64,
+       65,
+       66,
+       67
+      ]
+     },
+     "crops": {
+      "hr": [
+       106,
+       74,
+       64,
+       64
+      ],
+      "lr": [
+       53,
+       37,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9596,
+     "crop_align_score": 0.999
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       63
+      ],
+      "lr": [
+       59,
+       60,
+       61,
+       62,
+       63,
+       64,
+       65,
+       66,
+       67
+      ]
+     },
+     "crops": {
+      "hr": [
+       98,
+       138,
+       64,
+       64
+      ],
+      "lr": [
+       49,
+       69,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9596,
+     "crop_align_score": 0.9985
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       9
+      ],
+      "lr": [
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13
+      ]
+     },
+     "crops": {
+      "hr": [
+       106,
+       76,
+       64,
+       64
+      ],
+      "lr": [
+       53,
+       38,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9565,
+     "crop_align_score": 0.9959
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       9
+      ],
+      "lr": [
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13
+      ]
+     },
+     "crops": {
+      "hr": [
+       98,
+       140,
+       64,
+       64
+      ],
+      "lr": [
+       49,
+       70,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9565,
+     "crop_align_score": 0.9985
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       54
+      ],
+      "lr": [
+       50,
+       51,
+       52,
+       53,
+       54,
+       55,
+       56,
+       57,
+       58
+      ]
+     },
+     "crops": {
+      "hr": [
+       98,
+       128,
+       64,
+       64
+      ],
+      "lr": [
+       49,
+       64,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9592,
+     "crop_align_score": 0.999
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       54
+      ],
+      "lr": [
+       50,
+       51,
+       52,
+       53,
+       54,
+       55,
+       56,
+       57,
+       58
+      ]
+     },
+     "crops": {
+      "hr": [
+       158,
+       68,
+       64,
+       64
+      ],
+      "lr": [
+       79,
+       34,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9592,
+     "crop_align_score": 0.8889
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       49
+      ],
+      "lr": [
+       45,
+       46,
+       47,
+       48,
+       49,
+       50,
+       51,
+       52,
+       53
+      ]
+     },
+     "crops": {
+      "hr": [
+       100,
+       102,
+       64,
+       64
+      ],
+      "lr": [
+       50,
+       51,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.8915,
+     "crop_align_score": 0.9568
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       36
+      ],
+      "lr": [
+       32,
+       33,
+       34,
+       35,
+       36,
+       37,
+       38,
+       39,
+       40
+      ]
+     },
+     "crops": {
+      "hr": [
+       98,
+       102,
+       64,
+       64
+      ],
+      "lr": [
+       49,
+       51,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9016,
+     "crop_align_score": 0.9805
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       36
+      ],
+      "lr": [
+       32,
+       33,
+       34,
+       35,
+       36,
+       37,
+       38,
+       39,
+       40
+      ]
+     },
+     "crops": {
+      "hr": [
+       126,
+       38,
+       64,
+       64
+      ],
+      "lr": [
+       63,
+       19,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9016,
+     "crop_align_score": 0.8508
+    }
+   ]
+  },
+  "example_6_large_crops": {
+   "params": {
+    "length": 9,
+    "scale": 2,
+    "per_chunk": 2,
+    "margin": 4,
+    "crops_per_sequence": 2,
+    "tile_size": 128,
+    "tile_threshold": 0.0015,
+    "crop_edge_margin": 0,
+    "crop_motion_bias": 1.0,
+    "min_alignment_score": 0.7,
+    "min_crop_alignment_score": 0.82,
+    "crop_align_candidates": 3,
+    "max_drift": 0,
+    "drift_frames": 2
+   },
+   "sequences": [
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       63
+      ],
+      "lr": [
+       59,
+       60,
+       61,
+       62,
+       63,
+       64,
+       65,
+       66,
+       67
+      ]
+     },
+     "crops": {
+      "hr": [
+       34,
+       0,
+       128,
+       128
+      ],
+      "lr": [
+       17,
+       0,
+       64,
+       64
+      ]
+     },
+     "align_score": 0.9596,
+     "crop_align_score": 0.9974
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       63
+      ],
+      "lr": [
+       59,
+       60,
+       61,
+       62,
+       63,
+       64,
+       65,
+       66,
+       67
+      ]
+     },
+     "crops": {
+      "hr": [
+       0,
+       112,
+       128,
+       128
+      ],
+      "lr": [
+       0,
+       56,
+       64,
+       64
+      ]
+     },
+     "align_score": 0.9596,
+     "crop_align_score": 0.9964
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       9
+      ],
+      "lr": [
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13
+      ]
+     },
+     "crops": {
+      "hr": [
+       34,
+       0,
+       128,
+       128
+      ],
+      "lr": [
+       17,
+       0,
+       64,
+       64
+      ]
+     },
+     "align_score": 0.9565,
+     "crop_align_score": 0.9962
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       9
+      ],
+      "lr": [
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13
+      ]
+     },
+     "crops": {
+      "hr": [
+       158,
+       112,
+       128,
+       128
+      ],
+      "lr": [
+       79,
+       56,
+       64,
+       64
+      ]
+     },
+     "align_score": 0.9565,
+     "crop_align_score": 0.8741
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       49
+      ],
+      "lr": [
+       45,
+       46,
+       47,
+       48,
+       49,
+       50,
+       51,
+       52,
+       53
+      ]
+     },
+     "crops": {
+      "hr": [
+       82,
+       60,
+       128,
+       128
+      ],
+      "lr": [
+       41,
+       30,
+       64,
+       64
+      ]
+     },
+     "align_score": 0.8915,
+     "crop_align_score": 0.9114
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       49
+      ],
+      "lr": [
+       45,
+       46,
+       47,
+       48,
+       49,
+       50,
+       51,
+       52,
+       53
+      ]
+     },
+     "crops": {
+      "hr": [
+       192,
+       0,
+       128,
+       128
+      ],
+      "lr": [
+       96,
+       0,
+       64,
+       64
+      ]
+     },
+     "align_score": 0.8915,
+     "crop_align_score": 0.8476
+    }
+   ]
+  },
+  "example_14": {
+   "params": {
+    "length": 9,
+    "scale": 2,
+    "per_chunk": 1,
+    "margin": 4,
+    "crops_per_sequence": 2,
+    "tile_size": 96,
+    "tile_threshold": 0.0015,
+    "crop_edge_margin": 8,
+    "crop_motion_bias": 1.0,
+    "min_alignment_score": 0.7,
+    "min_crop_alignment_score": 0.82,
+    "crop_align_candidates": 3,
+    "max_drift": 0,
+    "drift_frames": 2
+   },
+   "sequences": [
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       63
+      ],
+      "lr": [
+       59,
+       60,
+       61,
+       62,
+       63,
+       64,
+       65,
+       66,
+       67
+      ]
+     },
+     "crops": {
+      "hr": [
+       106,
+       78,
+       96,
+       96
+      ],
+      "lr": [
+       53,
+       39,
+       48,
+       48
+      ]
+     },
+     "align_score": 0.9596,
+     "crop_align_score": 0.9958
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       63
+      ],
+      "lr": [
+       59,
+       60,
+       61,
+       62,
+       63,
+       64,
+       65,
+       66,
+       67
+      ]
+     },
+     "crops": {
+      "hr": [
+       24,
+       48,
+       96,
+       96
+      ],
+      "lr": [
+       12,
+       24,
+       48,
+       48
+      ]
+     },
+     "align_score": 0.9596,
+     "crop_align_score": 0.9975
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       49
+      ],
+      "lr": [
+       45,
+       46,
+       47,
+       48,
+       49,
+       50,
+       51,
+       52,
+       53
+      ]
+     },
+     "crops": {
+      "hr": [
+       82,
+       86,
+       96,
+       96
+      ],
+      "lr": [
+       41,
+       43,
+       48,
+       48
+      ]
+     },
+     "align_score": 0.8915,
+     "crop_align_score": 0.9187
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       49
+      ],
+      "lr": [
+       45,
+       46,
+       47,
+       48,
+       49,
+       50,
+       51,
+       52,
+       53
+      ]
+     },
+     "crops": {
+      "hr": [
+       194,
+       16,
+       96,
+       96
+      ],
+      "lr": [
+       97,
+       8,
+       48,
+       48
+      ]
+     },
+     "align_score": 0.8915,
+     "crop_align_score": 0.8268
+    }
+   ]
+  },
+  "no_crop_gate": {
+   "params": {
+    "length": 5,
+    "scale": 2,
+    "per_chunk": 4,
+    "margin": 2,
+    "crops_per_sequence": 3,
+    "tile_size": 48,
+    "tile_threshold": 0.003,
+    "crop_edge_margin": 4,
+    "crop_motion_bias": 0.0,
+    "min_alignment_score": 0.5,
+    "min_crop_alignment_score": 0.0,
+    "crop_align_candidates": 0,
+    "max_drift": 0,
+    "drift_frames": 1
+   },
+   "sequences": [
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       67
+      ],
+      "lr": [
+       65,
+       66,
+       67,
+       68,
+       69
+      ]
+     },
+     "crops": {
+      "hr": [
+       114,
+       64,
+       48,
+       48
+      ],
+      "lr": [
+       57,
+       32,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9625,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       67
+      ],
+      "lr": [
+       65,
+       66,
+       67,
+       68,
+       69
+      ]
+     },
+     "crops": {
+      "hr": [
+       204,
+       6,
+       48,
+       48
+      ],
+      "lr": [
+       102,
+       3,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9625,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       67
+      ],
+      "lr": [
+       65,
+       66,
+       67,
+       68,
+       69
+      ]
+     },
+     "crops": {
+      "hr": [
+       168,
+       54,
+       48,
+       48
+      ],
+      "lr": [
+       84,
+       27,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9625,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       62
+      ],
+      "lr": [
+       60,
+       61,
+       62,
+       63,
+       64
+      ]
+     },
+     "crops": {
+      "hr": [
+       114,
+       96,
+       48,
+       48
+      ],
+      "lr": [
+       57,
+       48,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9598,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       62
+      ],
+      "lr": [
+       60,
+       61,
+       62,
+       63,
+       64
+      ]
+     },
+     "crops": {
+      "hr": [
+       114,
+       150,
+       48,
+       48
+      ],
+      "lr": [
+       57,
+       75,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9598,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       62
+      ],
+      "lr": [
+       60,
+       61,
+       62,
+       63,
+       64
+      ]
+     },
+     "crops": {
+      "hr": [
+       158,
+       48,
+       48,
+       48
+      ],
+      "lr": [
+       79,
+       24,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9598,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       8
+      ],
+      "lr": [
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     "crops": {
+      "hr": [
+       132,
+       84,
+       48,
+       48
+      ],
+      "lr": [
+       66,
+       42,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9566,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       8
+      ],
+      "lr": [
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     "crops": {
+      "hr": [
+       114,
+       168,
+       48,
+       48
+      ],
+      "lr": [
+       57,
+       84,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9566,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       8
+      ],
+      "lr": [
+       6,
+       7,
+       8,
+       9,
+       10
+      ]
+     },
+     "crops": {
+      "hr": [
+       24,
+       48,
+       48,
+       48
+      ],
+      "lr": [
+       12,
+       24,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.9566,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       56
+      ],
+      "lr": [
+       54,
+       55,
+       56,
+       57,
+       58
+      ]
+     },
+     "crops": {
+      "hr": [
+       114,
+       126,
+       48,
+       48
+      ],
+      "lr": [
+       57,
+       63,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.959,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       56
+      ],
+      "lr": [
+       54,
+       55,
+       56,
+       57,
+       58
+      ]
+     },
+     "crops": {
+      "hr": [
+       158,
+       78,
+       48,
+       48
+      ],
+      "lr": [
+       79,
+       39,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.959,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       56
+      ],
+      "lr": [
+       54,
+       55,
+       56,
+       57,
+       58
+      ]
+     },
+     "crops": {
+      "hr": [
+       200,
+       6,
+       48,
+       48
+      ],
+      "lr": [
+       100,
+       3,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.959,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       58
+      ],
+      "lr": [
+       56,
+       57,
+       58,
+       59,
+       60
+      ]
+     },
+     "crops": {
+      "hr": [
+       206,
+       18,
+       48,
+       48
+      ],
+      "lr": [
+       103,
+       9,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.8925,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       58
+      ],
+      "lr": [
+       56,
+       57,
+       58,
+       59,
+       60
+      ]
+     },
+     "crops": {
+      "hr": [
+       68,
+       112,
+       48,
+       48
+      ],
+      "lr": [
+       34,
+       56,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.8925,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       58
+      ],
+      "lr": [
+       56,
+       57,
+       58,
+       59,
+       60
+      ]
+     },
+     "crops": {
+      "hr": [
+       158,
+       56,
+       48,
+       48
+      ],
+      "lr": [
+       79,
+       28,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.8925,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       52
+      ],
+      "lr": [
+       50,
+       51,
+       52,
+       53,
+       54
+      ]
+     },
+     "crops": {
+      "hr": [
+       202,
+       22,
+       48,
+       48
+      ],
+      "lr": [
+       101,
+       11,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.8919,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       52
+      ],
+      "lr": [
+       50,
+       51,
+       52,
+       53,
+       54
+      ]
+     },
+     "crops": {
+      "hr": [
+       162,
+       164,
+       48,
+       48
+      ],
+      "lr": [
+       81,
+       82,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.8919,
+     "crop_align_score": null
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       52
+      ],
+      "lr": [
+       50,
+       51,
+       52,
+       53,
+       54
+      ]
+     },
+     "crops": {
+      "hr": [
+       154,
+       60,
+       48,
+       48
+      ],
+      "lr": [
+       77,
+       30,
+       24,
+       24
+      ]
+     },
+     "align_score": 0.8919,
+     "crop_align_score": null
+    }
+   ]
+  },
+  "strict_frame_gate": {
+   "params": {
+    "length": 9,
+    "scale": 2,
+    "per_chunk": 3,
+    "margin": 4,
+    "crops_per_sequence": 1,
+    "tile_size": 64,
+    "tile_threshold": 0.0015,
+    "crop_edge_margin": 8,
+    "crop_motion_bias": 0.5,
+    "min_alignment_score": 0.9,
+    "min_crop_alignment_score": 0.9,
+    "crop_align_candidates": 4,
+    "max_drift": 0,
+    "drift_frames": 2
+   },
+   "sequences": [
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       63
+      ],
+      "lr": [
+       59,
+       60,
+       61,
+       62,
+       63,
+       64,
+       65,
+       66,
+       67
+      ]
+     },
+     "crops": {
+      "hr": [
+       106,
+       74,
+       64,
+       64
+      ],
+      "lr": [
+       53,
+       37,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9596,
+     "crop_align_score": 0.999
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       9
+      ],
+      "lr": [
+       5,
+       6,
+       7,
+       8,
+       9,
+       10,
+       11,
+       12,
+       13
+      ]
+     },
+     "crops": {
+      "hr": [
+       106,
+       76,
+       64,
+       64
+      ],
+      "lr": [
+       53,
+       38,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9565,
+     "crop_align_score": 0.9959
+    },
+    {
+     "chunk": [
+      0,
+      72
+     ],
+     "frames": {
+      "hr": [
+       54
+      ],
+      "lr": [
+       50,
+       51,
+       52,
+       53,
+       54,
+       55,
+       56,
+       57,
+       58
+      ]
+     },
+     "crops": {
+      "hr": [
+       98,
+       128,
+       64,
+       64
+      ],
+      "lr": [
+       49,
+       64,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9592,
+     "crop_align_score": 0.999
+    },
+    {
+     "chunk": [
+      72,
+      144
+     ],
+     "frames": {
+      "hr": [
+       36
+      ],
+      "lr": [
+       32,
+       33,
+       34,
+       35,
+       36,
+       37,
+       38,
+       39,
+       40
+      ]
+     },
+     "crops": {
+      "hr": [
+       98,
+       102,
+       64,
+       64
+      ],
+      "lr": [
+       49,
+       51,
+       32,
+       32
+      ]
+     },
+     "align_score": 0.9016,
+     "crop_align_score": 0.9805
+    }
+   ]
+  }
+ }
+}

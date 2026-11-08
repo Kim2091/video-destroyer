@@ -1,0 +1,20 @@
+[package]
+name = "vs-ntsc"
+version = "0.1.0"
+edition = "2021"
+description = "VapourSynth plugin running ntsc-simulator's NTSC composite and VHS path on each frame"
+publish = false
+
+[lib]
+name = "vsntsc"
+crate-type = ["cdylib"]
+
+[dependencies]
+ntsc-composite-simulator = { path = "../ntsc-simulator", default-features = false }
+vapoursynth-sys = "0.6"
+
+# The simulator's own release settings, so the plugin's output matches its CLI.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
